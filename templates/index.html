@@ -678,7 +678,7 @@
   <script>
     const USUARIO_ATUAL = "{{ usuario }}";
     const MEMBROS = ["{{ membro1 }}", "{{ membro2 }}"];
-    const GRUPO_NOME = "{{ grupo_nome }}";
+    const GRUPO_NOME = MEMBROS[0] + " & " + MEMBROS[1];
 
     const CATEGORIAS = {
       Fixo: ["✈️ Passagem", "🛂 Visto", "📄 Passaporte", "🏦 Agência", "💉 Vacina", "📦 Outros"],
