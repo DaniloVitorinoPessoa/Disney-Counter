@@ -210,6 +210,9 @@
       backdrop-filter: blur(3px); box-shadow: 0 10px 30px rgba(0,0,0,0.3);
     }
     .panel h2 { font-family: 'Cinzel', serif; font-size: 1.1rem; color: var(--gold); margin-bottom: 16px; }
+    .acerto-frase { text-align: center; font-family: 'Cinzel', serif; font-size: 1.25rem; color: var(--gold); line-height: 1.4; text-shadow: 0 0 18px rgba(245,200,66,0.3); }
+    .acerto-frase .quem { color: var(--lilac); }
+    .acerto-frase .grana { color: #7dd3fc; }
 
     .toggle { display: flex; gap: 8px; margin-bottom: 16px; }
     .toggle button {
@@ -273,6 +276,7 @@
     }
     .tag-tipo.Fixo { background: rgba(252,165,165,0.15); color: #fca5a5; }
     .tag-tipo.Viagem { background: rgba(245,200,66,0.15); color: var(--gold); }
+    .tag-resp { font-size: 0.68rem; color: var(--muted); font-weight: 700; }
     .item .valor-box { text-align: right; white-space: nowrap; }
     .item .valor { font-family: 'Cinzel', serif; font-weight: 700; font-size: 1.15rem; color: var(--gold); white-space: nowrap; }
     .item .orig { font-size: 0.66rem; color: var(--muted); margin-top: 2px; white-space: nowrap; }
@@ -479,6 +483,11 @@
       </div>
     </div>
 
+    <div class="panel acerto">
+      <h2>🤝 Acerto do casal</h2>
+      <div class="acerto-frase" id="acertoFrase">Tudo quitado ✨</div>
+    </div>
+
     <div class="panel">
       <h2>➕ Adicionar gasto</h2>
       <div class="toggle">
@@ -510,6 +519,14 @@
           <select id="quem">
             <option value="{{ membro1 }}">{{ membro1 }}</option>
             <option value="{{ membro2 }}">{{ membro2 }}</option>
+          </select>
+        </div>
+        <div>
+          <label for="responsavel">De quem é esse gasto?</label>
+          <select id="responsavel">
+            <option value="{{ membro1 }}">{{ membro1 }}</option>
+            <option value="{{ membro2 }}">{{ membro2 }}</option>
+            <option value="Dividido">🤝 Meio a meio</option>
           </select>
         </div>
         <div>
@@ -621,6 +638,7 @@
     // defaults
     document.getElementById('data').value = new Date().toISOString().slice(0, 10);
     document.getElementById('quem').value = USUARIO_ATUAL;
+    document.getElementById('responsavel').value = USUARIO_ATUAL;
     preencherCategorias();
 
     // a cotacao so faz sentido para gastos em US$; em R$ fica desabilitada
@@ -689,6 +707,7 @@
             <span class="dt"></span>
             <span class="badge"></span>
             <span class="tag-tipo"></span>
+            <span class="tag-resp"></span>
           </div>
         </div>
         <div class="valor-box">
@@ -712,6 +731,10 @@
       const tt = div.querySelector('.tag-tipo');
       tt.textContent = tipo === 'Fixo' ? '🧳 fixo' : '🏰 viagem';
       tt.classList.add(tipo);
+      const tr = div.querySelector('.tag-resp');
+      const resp = g.responsavel || g.quem;
+      if (resp === 'Dividido') tr.textContent = '🤝 meio a meio';
+      else if (resp !== g.quem) tr.textContent = '➡️ de ' + resp;
       div.querySelector('.del').addEventListener('click', () => deletar(g.id, g.descricao));
       return div;
     }
@@ -732,8 +755,20 @@
       gastos.forEach(g => lista.appendChild(render(g, false)));
     }
 
+    async function carregarAcerto() {
+      const res = await fetch('/api/acerto?exibir=' + exibir);
+      if (!res.ok) return;
+      const a = await res.json();
+      const el = document.getElementById('acertoFrase');
+      if (a.quitado) {
+        el.innerHTML = 'Tudo certo entre vocês ✨<br><span style="font-size:.85rem;color:var(--muted)">ninguém deve nada</span>';
+      } else {
+        el.innerHTML = `<span class="quem">${a.devedor}</span> deve <span class="grana">${fmt(a.valor, a.exibir)}</span> para <span class="quem">${a.credor}</span>`;
+      }
+    }
+
     async function atualizar() {
-      await Promise.all([carregarResumo(), carregarLista()]);
+      await Promise.all([carregarResumo(), carregarLista(), carregarAcerto()]);
     }
 
     document.getElementById('form').addEventListener('submit', async (e) => {
@@ -747,6 +782,7 @@
         tipo: tipoAtual,
         moeda: document.getElementById('moeda').value,
         cotacao: document.getElementById('cotacao').value,
+        responsavel: document.getElementById('responsavel').value,
       };
       const res = await fetch('/api/gastos', {
         method: 'POST',

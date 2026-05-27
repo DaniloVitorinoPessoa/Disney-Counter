@@ -86,6 +86,7 @@ def init_db():
             moeda TEXT NOT NULL DEFAULT 'USD',
             cotacao {valor_col} NOT NULL DEFAULT 1,
             grupo TEXT NOT NULL DEFAULT 'casal1',
+            responsavel TEXT NOT NULL DEFAULT '',
             criado_em TEXT NOT NULL
         )
         """
@@ -99,6 +100,7 @@ def init_db():
         conn.execute("ALTER TABLE gastos ADD COLUMN IF NOT EXISTS moeda TEXT NOT NULL DEFAULT 'USD'")
         conn.execute(f"ALTER TABLE gastos ADD COLUMN IF NOT EXISTS cotacao {valor_col} NOT NULL DEFAULT 1")
         conn.execute("ALTER TABLE gastos ADD COLUMN IF NOT EXISTS grupo TEXT NOT NULL DEFAULT 'casal1'")
+        conn.execute("ALTER TABLE gastos ADD COLUMN IF NOT EXISTS responsavel TEXT NOT NULL DEFAULT ''")
     else:
         cols = [r[1] for r in conn.execute("PRAGMA table_info(gastos)").fetchall()]
         if "tipo" not in cols:
@@ -109,6 +111,8 @@ def init_db():
             conn.execute(f"ALTER TABLE gastos ADD COLUMN cotacao {valor_col} NOT NULL DEFAULT 1")
         if "grupo" not in cols:
             conn.execute("ALTER TABLE gastos ADD COLUMN grupo TEXT NOT NULL DEFAULT 'casal1'")
+        if "responsavel" not in cols:
+            conn.execute("ALTER TABLE gastos ADD COLUMN responsavel TEXT NOT NULL DEFAULT ''")
     conn.commit()
     conn.close()
 
@@ -225,6 +229,12 @@ def inserir_gasto():
     if quem not in membros:
         quem = session["usuario"]
 
+    # "De quem e" o gasto: um dos membros ou 'Dividido' (meio a meio).
+    # Se nao vier valido, assume que e de quem pagou (ninguem deve nada).
+    responsavel = (data.get("responsavel") or "").strip()
+    if responsavel not in membros and responsavel != "Dividido":
+        responsavel = quem
+
     criado_em = datetime.now().isoformat()
     conn = get_db()
 
@@ -238,10 +248,10 @@ def inserir_gasto():
         cot = get_cotacao(conn, grupo)
 
     sql = (
-        "INSERT INTO gastos (descricao, valor, categoria, quem, data, tipo, moeda, cotacao, grupo, criado_em) "
-        f"VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})"
+        "INSERT INTO gastos (descricao, valor, categoria, quem, data, tipo, moeda, cotacao, grupo, responsavel, criado_em) "
+        f"VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})"
     )
-    params = (descricao, valor, categoria, quem, data_gasto, tipo, moeda, cot, grupo, criado_em)
+    params = (descricao, valor, categoria, quem, data_gasto, tipo, moeda, cot, grupo, responsavel, criado_em)
     if USE_PG:
         novo_id = conn.execute(sql + " RETURNING id", params).fetchone()["id"]
     else:
@@ -343,6 +353,56 @@ def set_config():
     conn.commit()
     conn.close()
     return jsonify({"ok": True, "cotacao": cot})
+
+
+@app.route("/api/acerto", methods=["GET"])
+@login_required
+def acerto():
+    exibir = request.args.get("exibir", "USD").upper()
+    if exibir not in ("USD", "BRL"):
+        exibir = "USD"
+    grupo = session["grupo"]
+    m1, m2 = GRUPOS[grupo]["membros"]
+
+    conn = get_db()
+    rows = conn.execute(
+        f"SELECT valor, moeda, cotacao, quem, responsavel FROM gastos WHERE grupo = {PH}",
+        (grupo,),
+    ).fetchall()
+    conn.close()
+
+    # net positivo = a pessoa tem a receber; negativo = deve.
+    net = {m1: 0.0, m2: 0.0}
+    for r in rows:
+        v = converter(r["valor"], r["moeda"], exibir, r["cotacao"])
+        pagou = r["quem"]
+        resp = r["responsavel"] or pagou  # vazio = de quem pagou (sem divida)
+        if resp == "Dividido":
+            parte = {m1: v / 2, m2: v / 2}
+        elif resp in net:
+            parte = {resp: v}
+        else:
+            parte = {pagou: v}
+        for m in (m1, m2):
+            pago = v if pagou == m else 0.0
+            net[m] += pago - parte.get(m, 0.0)
+
+    saldo = net[m1]  # quanto m1 tem a receber (se negativo, m1 deve)
+    if abs(saldo) < 0.01:
+        return jsonify({"quitado": True, "valor": 0, "exibir": exibir})
+    if saldo > 0:
+        devedor, credor, valor = m2, m1, saldo
+    else:
+        devedor, credor, valor = m1, m2, -saldo
+    return jsonify(
+        {
+            "quitado": False,
+            "devedor": devedor,
+            "credor": credor,
+            "valor": round(valor, 2),
+            "exibir": exibir,
+        }
+    )
 
 
 # Garante que o banco existe mesmo sob gunicorn (sem rodar __main__).
