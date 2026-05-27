@@ -84,8 +84,19 @@
     @keyframes floatY { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
     /* em telas largas: usa o espalhado e esconde a fileira de baixo */
     @media (min-width: 1180px) { .landmark.show { display: none; } }
-    /* em telas estreitas: esconde o espalhado e usa a fileira de baixo */
-    @media (max-width: 1179px) { .scatter.show { display: none; } }
+    /* em telas estreitas (celular/tablet): esconde o espalhado lateral e
+       transforma o cenario numa coluna de fundo espalhada pela tela */
+    @media (max-width: 1179px) {
+      .scatter.show { display: none; }
+      header { padding-top: 42px; }
+      .landmark.show {
+        display: flex; flex-direction: column; align-items: center; justify-content: space-around;
+        top: 0; bottom: auto; left: 0; right: 0; height: 100vh;
+        transform: none; opacity: 0.3; white-space: normal;
+      }
+      .landmark .ic { margin: 8px 0; }
+      .landmark .ic svg { width: 92px; height: 92px; }
+    }
     @keyframes castleGlow {
       0%,100% { filter: drop-shadow(0 0 8px rgba(192,132,252,0.18)); }
       50% { filter: drop-shadow(0 0 22px rgba(245,200,66,0.45)); }
@@ -347,8 +358,8 @@
       .hero .val { font-size: 2.1rem; }
       .cd-box { min-width: 64px; padding: 10px 8px; }
       .cd-num { font-size: 1.6rem; }
-      .landmark .ic { margin: 0 7px; }
-      .landmark .ic svg { width: 66px; height: 66px; }
+      .landmark .ic { margin: 8px 0; }
+      .landmark .ic svg { width: 72px; height: 72px; }
       .landmark .ic.emoji { font-size: 60px; }
       .landmark .kachow { font-size: 42px; letter-spacing: 2px; }
     }
