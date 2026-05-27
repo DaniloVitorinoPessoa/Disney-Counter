@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: disney-gastos
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      # Gerada automaticamente pelo Render (assinatura das sessoes de login).
+      - key: SECRET_KEY
+        generateValue: true
+      # Cole aqui a connection string do Postgres do Neon (dados permanentes).
+      - key: DATABASE_URL
+        sync: false
+      # Senhas dos dois usuarios (defina valores fortes no painel do Render).
+      - key: DANILO_SENHA
+        sync: false
+      - key: RAFAELLA_SENHA
+        sync: false

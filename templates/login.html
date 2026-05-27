@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>✨ Disney Trip — Entrar</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0a0e2e;
+      --bg2: #131a4a;
+      --gold: #f5c842;
+      --lilac: #c084fc;
+      --text: #eef1ff;
+      --muted: #9aa3d4;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Nunito', sans-serif;
+      background: radial-gradient(ellipse at top, #1a2160 0%, var(--bg) 60%);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+    }
+    .stars { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+    .star {
+      position: absolute;
+      width: 2px; height: 2px;
+      background: #fff;
+      border-radius: 50%;
+      animation: twinkle 3s infinite ease-in-out;
+    }
+    @keyframes twinkle {
+      0%, 100% { opacity: 0.2; transform: scale(0.8); }
+      50% { opacity: 1; transform: scale(1.4); box-shadow: 0 0 6px #fff; }
+    }
+    .castle {
+      position: fixed;
+      bottom: 0; left: 50%;
+      transform: translateX(-50%);
+      width: 520px; max-width: 100%;
+      opacity: 0.10;
+      z-index: 0;
+      fill: var(--lilac);
+    }
+    .card {
+      position: relative;
+      z-index: 1;
+      background: rgba(19, 26, 74, 0.85);
+      border: 1px solid rgba(192, 132, 252, 0.3);
+      border-radius: 22px;
+      padding: 44px 38px;
+      width: 360px;
+      max-width: 92vw;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 40px rgba(192,132,252,0.15);
+      backdrop-filter: blur(6px);
+      text-align: center;
+    }
+    .card h1 {
+      font-family: 'Cinzel', serif;
+      font-size: 1.9rem;
+      color: var(--gold);
+      letter-spacing: 1px;
+      margin-bottom: 4px;
+    }
+    .card .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 26px; }
+    label { display: block; text-align: left; font-size: 0.8rem; color: var(--lilac); margin: 14px 0 6px; font-weight: 700; }
+    select, input {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(192,132,252,0.3);
+      background: rgba(10, 14, 46, 0.8);
+      color: var(--text);
+      font-family: 'Nunito', sans-serif;
+      font-size: 1rem;
+    }
+    select:focus, input:focus { outline: none; border-color: var(--gold); }
+    button {
+      width: 100%;
+      margin-top: 24px;
+      padding: 13px;
+      border: none;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--gold), #e0a91f);
+      color: #1a1200;
+      font-family: 'Cinzel', serif;
+      font-weight: 700;
+      font-size: 1rem;
+      letter-spacing: 1px;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    button:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(245,200,66,0.4); }
+    .erro { color: #ff8a8a; font-size: 0.85rem; margin-top: 14px; min-height: 18px; }
+  </style>
+</head>
+<body>
+  <div class="stars" id="stars"></div>
+  <svg class="castle" viewBox="0 0 200 120" xmlns="http://www.w3.org/2000/svg">
+    <polygon points="20,120 20,70 30,55 40,70 40,120"/>
+    <polygon points="160,120 160,70 170,55 180,70 180,120"/>
+    <rect x="55" y="60" width="20" height="60"/>
+    <polygon points="55,60 65,40 75,60"/>
+    <rect x="125" y="60" width="20" height="60"/>
+    <polygon points="125,60 135,40 145,60"/>
+    <rect x="85" y="40" width="30" height="80"/>
+    <polygon points="85,40 100,10 115,40"/>
+    <circle cx="100" cy="6" r="3"/>
+  </svg>
+
+  <form class="card" id="form">
+    <h1>✨ Disney Trip</h1>
+    <div class="sub">Rastreador de Gastos</div>
+
+    <label for="usuario">Quem é você?</label>
+    <select id="usuario" name="usuario">
+      <option value="Danilo">Danilo</option>
+      <option value="Rafaella">Rafaella</option>
+    </select>
+
+    <label for="senha">Senha</label>
+    <input type="password" id="senha" name="senha" placeholder="••••••••" autocomplete="current-password">
+
+    <button type="submit">Entrar</button>
+    <div class="erro" id="erro"></div>
+  </form>
+
+  <script>
+    const starsEl = document.getElementById('stars');
+    for (let i = 0; i < 60; i++) {
+      const s = document.createElement('div');
+      s.className = 'star';
+      s.style.left = Math.random() * 100 + '%';
+      s.style.top = Math.random() * 100 + '%';
+      s.style.animationDelay = Math.random() * 3 + 's';
+      starsEl.appendChild(s);
+    }
+
+    const form = document.getElementById('form');
+    const erro = document.getElementById('erro');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      erro.textContent = '';
+      const usuario = document.getElementById('usuario').value;
+      const senha = document.getElementById('senha').value;
+      try {
+        const res = await fetch('/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ usuario, senha })
+        });
+        if (res.ok) {
+          window.location.href = '/';
+        } else {
+          const data = await res.json().catch(() => ({}));
+          erro.textContent = data.erro || 'Falha no login.';
+        }
+      } catch (_) {
+        erro.textContent = 'Erro de conexão.';
+      }
+    });
+  </script>
+</body>
+</html>
