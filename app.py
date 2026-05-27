@@ -421,22 +421,34 @@ def acerto():
 @login_required
 def get_cofrinho():
     grupo = session["grupo"]
+    membros = GRUPOS[grupo]["membros"]
     conn = get_db()
-    row = conn.execute(
-        f"SELECT valor FROM config WHERE chave = {PH}", (f"meta_grana:{grupo}",)
-    ).fetchone()
-    try:
-        meta = float(row["valor"]) if row else 0.0
-    except (TypeError, ValueError):
-        meta = 0.0
+    metas = {}
+    for m in membros:
+        row = conn.execute(
+            f"SELECT valor FROM config WHERE chave = {PH}", (f"meta:{grupo}:{m}",)
+        ).fetchone()
+        try:
+            metas[m] = float(row["valor"]) if row else 0.0
+        except (TypeError, ValueError):
+            metas[m] = 0.0
     aportes = conn.execute(
         f"SELECT * FROM aportes WHERE grupo = {PH} ORDER BY data DESC, id DESC",
         (grupo,),
     ).fetchall()
     conn.close()
-    total = sum(a["valor"] for a in aportes)
+    totais = {m: 0.0 for m in membros}
+    for a in aportes:
+        if a["quem"] in totais:
+            totais[a["quem"]] += a["valor"]
     return jsonify(
-        {"meta": meta, "total": total, "aportes": [dict(a) for a in aportes]}
+        {
+            "metas": metas,
+            "totais": totais,
+            "meta_geral": sum(metas.values()),
+            "total_geral": sum(totais.values()),
+            "aportes": [dict(a) for a in aportes],
+        }
     )
 
 
@@ -444,6 +456,11 @@ def get_cofrinho():
 @login_required
 def set_meta():
     data = request.get_json(silent=True) or {}
+    grupo = session["grupo"]
+    membros = GRUPOS[grupo]["membros"]
+    quem = (data.get("quem") or "").strip()
+    if quem not in membros:
+        return jsonify({"erro": "Pessoa invalida"}), 400
     try:
         meta = float(data.get("meta"))
     except (TypeError, ValueError):
@@ -454,11 +471,11 @@ def set_meta():
     conn.execute(
         f"INSERT INTO config (chave, valor) VALUES ({PH}, {PH}) "
         "ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor",
-        (f"meta_grana:{session['grupo']}", str(meta)),
+        (f"meta:{grupo}:{quem}", str(meta)),
     )
     conn.commit()
     conn.close()
-    return jsonify({"ok": True, "meta": meta})
+    return jsonify({"ok": True, "quem": quem, "meta": meta})
 
 
 @app.route("/api/aportes", methods=["POST"])

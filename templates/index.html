@@ -236,6 +236,15 @@
     #cofreTotal { font-family: 'Cinzel', serif; font-size: 1.5rem; color: var(--gold); font-weight: 700; }
     .cofre-pct { font-weight: 800; color: var(--lilac); }
     .cofre-falta { margin-top: 8px; color: var(--muted); font-weight: 700; font-size: 0.9rem; }
+    .cofre-bloco { margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+    .cofre-bloco:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+    .cofre-nome { font-weight: 800; color: var(--text); margin-bottom: 8px; display: inline-block; }
+    .cofre-linha { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .cofre-linha .cofre-nome { margin-bottom: 0; }
+    .metaPessoa { width: 110px; margin-left: auto; padding: 7px 9px; border-radius: 10px; text-align: right; border: 1px solid var(--border); background: rgba(10,14,46,0.8); color: var(--text); font-weight: 700; }
+    .metaPessoa:focus { outline: none; border-color: var(--gold); }
+    .btn-meta { padding: 7px 11px; border: none; border-radius: 10px; cursor: pointer; background: linear-gradient(135deg, var(--gold), #e0a91f); color: #1a1200; font-weight: 800; }
+    .cofre-tot { font-family: 'Cinzel', serif; font-size: 1.2rem; color: var(--gold); font-weight: 700; }
     .acerto-frase { text-align: center; font-family: 'Cinzel', serif; font-size: 1.25rem; color: var(--gold); line-height: 1.4; text-shadow: 0 0 18px rgba(245,200,66,0.3); }
     .acerto-frase .quem { color: var(--lilac); }
     .acerto-frase .grana { color: #7dd3fc; }
@@ -589,21 +598,7 @@
     <div id="tab-metas" class="tab-pane">
       <div class="panel">
         <h2>🎯 Cofrinho da viagem</h2>
-        <div class="cofre-meta">
-          <span class="mb-lbl">Meta</span>
-          <span class="mb-prefixo">R$</span>
-          <input type="number" id="metaInput" step="100" min="0" placeholder="10000">
-          <button type="button" id="salvarMeta" title="Salvar meta">✓</button>
-        </div>
-        <div class="cofre-prog">
-          <div class="cofre-barra"><div class="cofre-fill" id="cofreFill"></div></div>
-          <div class="cofre-nums">
-            <span id="cofreTotal">R$ 0,00</span>
-            <span id="cofrePct" class="cofre-pct">0%</span>
-            <span id="cofreMeta" class="mb-lbl">de R$ 0,00</span>
-          </div>
-          <div class="cofre-falta" id="cofreFalta"></div>
-        </div>
+        <div id="cofreBody"></div>
       </div>
 
       <div class="panel">
@@ -1097,7 +1092,11 @@
     function setCursor(emoji) {
       cursorEmoji = emoji;
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30"><text x="2" y="24" font-size="24">${emoji}</text></svg>`;
-      document.body.style.cursor = `url("data:image/svg+xml,${encodeURIComponent(svg)}") 4 26, auto`;
+      const url = `url("data:image/svg+xml,${encodeURIComponent(svg)}") 4 26, auto`;
+      // aplica em tudo (inclusive botoes/links), menos campos de digitar texto
+      let st = document.getElementById('cursorStyle');
+      if (!st) { st = document.createElement('style'); st.id = 'cursorStyle'; document.head.appendChild(st); }
+      st.textContent = `*:not(input):not(textarea){cursor:${url} !important}`;
     }
     let _ultRastro = 0;
     document.addEventListener('mousemove', (e) => {
@@ -1339,79 +1338,99 @@
       });
     });
 
-    // ================= COFRINHO =================
+    // ================= COFRINHO (meta por pessoa + total junto) =================
     document.getElementById('aporteData').value = new Date().toISOString().slice(0, 10);
     document.getElementById('aporteQuem').value = USUARIO_ATUAL;
-    let metaCofre = 0;
+
+    function textoFalta(falta, meta, dias) {
+      if (meta <= 0) return 'Defina as metas pra acompanhar o progresso 🎯';
+      if (falta <= 0) return '🎉 Meta batida! Vocês conseguiram!';
+      if (dias > 0) return `Faltam ${fmt(falta, 'BRL')} — guardando ~${fmt(falta / dias, 'BRL')} por dia até a viagem.`;
+      return `Faltam ${fmt(falta, 'BRL')}.`;
+    }
+    function barraHTML(total, meta) {
+      const pct = meta > 0 ? Math.min(100, (total / meta) * 100) : 0;
+      return `<div class="cofre-barra"><div class="cofre-fill" style="width:${pct}%"></div></div>
+        <div class="cofre-nums">
+          <span class="cofre-tot">${fmt(total, 'BRL')}</span>
+          <span class="cofre-pct">${Math.round(pct)}%</span>
+          <span class="mb-lbl">de ${fmt(meta, 'BRL')}</span>
+        </div>`;
+    }
 
     async function carregarCofrinho() {
       const res = await fetch('/api/cofrinho');
       if (!res.ok) return;
       const c = await res.json();
-      metaCofre = c.meta;
-      const mi = document.getElementById('metaInput');
-      if (document.activeElement !== mi && c.meta > 0) mi.value = c.meta;
-
-      const pct = c.meta > 0 ? Math.min(100, (c.total / c.meta) * 100) : 0;
-      document.getElementById('cofreFill').style.width = pct + '%';
-      document.getElementById('cofreTotal').textContent = fmt(c.total, 'BRL');
-      document.getElementById('cofrePct').textContent = Math.round(pct) + '%';
-      document.getElementById('cofreMeta').textContent = 'de ' + fmt(c.meta, 'BRL');
-
-      const falta = c.meta - c.total;
-      const fe = document.getElementById('cofreFalta');
       const dias = diasRestantes();
-      if (c.meta <= 0) {
-        fe.textContent = 'Defina uma meta pra acompanhar o progresso 🎯';
-      } else if (falta <= 0) {
-        fe.textContent = '🎉 Meta batida! Vocês conseguiram!';
-      } else if (dias > 0) {
-        fe.textContent = `Faltam ${fmt(falta, 'BRL')} — guardando ~${fmt(falta / dias, 'BRL')} por dia até a viagem.`;
-      } else {
-        fe.textContent = `Faltam ${fmt(falta, 'BRL')}.`;
-      }
 
+      // bloco "Juntos" + um bloco por pessoa (com meta editavel)
+      let html = `<div class="cofre-bloco">
+        <span class="cofre-nome">🐷 Juntos</span>
+        ${barraHTML(c.total_geral, c.meta_geral)}
+        <div class="cofre-falta">${textoFalta(c.meta_geral - c.total_geral, c.meta_geral, dias)}</div>
+      </div>`;
+      MEMBROS.forEach(m => {
+        const meta = c.metas[m] || 0;
+        html += `<div class="cofre-bloco">
+          <div class="cofre-linha">
+            <span class="cofre-nome">${m}</span>
+            <span class="mb-prefixo">R$</span>
+            <input type="number" class="metaPessoa" data-quem="${m}" step="100" min="0" value="${meta > 0 ? meta : ''}" placeholder="meta">
+            <button type="button" class="btn-meta" data-quem="${m}" title="Salvar meta">✓</button>
+          </div>
+          ${barraHTML(c.totais[m] || 0, meta)}
+        </div>`;
+      });
+      const body = document.getElementById('cofreBody');
+      body.innerHTML = html;
+      body.querySelectorAll('.btn-meta').forEach(b => b.addEventListener('click', () => salvarMeta(b.dataset.quem)));
+      body.querySelectorAll('.metaPessoa').forEach(inp => inp.addEventListener('keydown', e => { if (e.key === 'Enter') salvarMeta(inp.dataset.quem); }));
+
+      renderAportes(c.aportes);
+    }
+
+    function renderAportes(aportes) {
       const lista = document.getElementById('listaAportes');
       lista.innerHTML = '';
-      if (!c.aportes.length) {
+      if (!aportes.length) {
         lista.innerHTML = '<div class="vazio">Nenhum valor guardado ainda. Bora começar! 🐷</div>';
-      } else {
-        c.aportes.forEach(ap => {
-          const div = document.createElement('div');
-          div.className = 'item';
-          div.innerHTML = `
-            <div class="emoji">🪙</div>
-            <div class="info">
-              <div class="desc"></div>
-              <div class="meta"><span class="dt"></span><span class="badge"></span></div>
-            </div>
-            <div class="valor">${fmt(ap.valor, 'BRL')}</div>
-            <button class="del" title="Deletar">🗑️</button>`;
-          div.querySelector('.desc').textContent = 'Aporte';
-          div.querySelector('.dt').textContent = fmtData(ap.data);
-          const bd = div.querySelector('.badge');
-          bd.textContent = ap.quem; bd.classList.add(ap.quem === MEMBROS[1] ? 'p2' : 'p1');
-          div.querySelector('.del').addEventListener('click', async () => {
-            if (!confirm('Remover este aporte?')) return;
-            await fetch('/api/aportes/' + ap.id, { method: 'DELETE' });
-            carregarCofrinho();
-          });
-          lista.appendChild(div);
-        });
+        return;
       }
+      aportes.forEach(ap => {
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.innerHTML = `
+          <div class="emoji">🪙</div>
+          <div class="info">
+            <div class="desc"></div>
+            <div class="meta"><span class="dt"></span><span class="badge"></span></div>
+          </div>
+          <div class="valor">${fmt(ap.valor, 'BRL')}</div>
+          <button class="del" title="Deletar">🗑️</button>`;
+        div.querySelector('.desc').textContent = 'Aporte';
+        div.querySelector('.dt').textContent = fmtData(ap.data);
+        const bd = div.querySelector('.badge');
+        bd.textContent = ap.quem; bd.classList.add(ap.quem === MEMBROS[1] ? 'p2' : 'p1');
+        div.querySelector('.del').addEventListener('click', async () => {
+          if (!confirm('Remover este aporte?')) return;
+          await fetch('/api/aportes/' + ap.id, { method: 'DELETE' });
+          carregarCofrinho();
+        });
+        lista.appendChild(div);
+      });
     }
 
-    async function salvarMeta() {
-      const v = parseFloat(document.getElementById('metaInput').value);
+    async function salvarMeta(quem) {
+      const inp = document.querySelector('.metaPessoa[data-quem="' + CSS.escape(quem) + '"]');
+      const v = parseFloat(inp.value);
       if (isNaN(v) || v < 0) { alert('Informe uma meta válida.'); return; }
       const res = await fetch('/api/cofrinho', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ meta: v })
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ quem, meta: v })
       });
-      if (res.ok) { toast('🎯 Meta salva!'); carregarCofrinho(); }
-      else { alert('Erro ao salvar meta.'); }
+      if (res.ok) { toast(`🎯 Meta de ${quem} salva!`); carregarCofrinho(); }
+      else { alert('Erro ao salvar a meta.'); }
     }
-    document.getElementById('salvarMeta').addEventListener('click', salvarMeta);
-    document.getElementById('metaInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') salvarMeta(); });
 
     document.getElementById('formAporte').addEventListener('submit', async (e) => {
       e.preventDefault();
