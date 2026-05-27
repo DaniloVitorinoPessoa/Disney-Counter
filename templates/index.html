@@ -272,7 +272,9 @@
     }
     .tag-tipo.Fixo { background: rgba(252,165,165,0.15); color: #fca5a5; }
     .tag-tipo.Viagem { background: rgba(245,200,66,0.15); color: var(--gold); }
+    .item .valor-box { text-align: right; white-space: nowrap; }
     .item .valor { font-family: 'Cinzel', serif; font-weight: 700; font-size: 1.15rem; color: var(--gold); white-space: nowrap; }
+    .item .orig { font-size: 0.66rem; color: var(--muted); margin-top: 2px; white-space: nowrap; }
     .del {
       background: none; border: none; cursor: pointer; font-size: 1.1rem;
       opacity: 0.55; transition: opacity .15s, transform .15s; flex-shrink: 0;
@@ -446,17 +448,11 @@
 
     <div class="moeda-bar">
       <div class="mb-grupo">
-        <span class="mb-lbl">Ver em</span>
+        <span class="mb-lbl">Ver totais em</span>
         <div class="mb-toggle">
           <button type="button" data-exibir="USD" id="verUSD" class="active">US$</button>
           <button type="button" data-exibir="BRL" id="verBRL">R$</button>
         </div>
-      </div>
-      <div class="mb-grupo">
-        <span class="mb-lbl">1 US$ =</span>
-        <span class="mb-prefixo">R$</span>
-        <input type="number" id="cotacao" step="0.01" min="0" inputmode="decimal">
-        <button type="button" id="salvarCot" title="Salvar cotação">✓</button>
       </div>
     </div>
 
@@ -500,6 +496,10 @@
             <option value="USD">US$ Dólar</option>
             <option value="BRL">R$ Real</option>
           </select>
+        </div>
+        <div>
+          <label for="cotacao">Cotação do dia (R$ por US$)</label>
+          <input type="number" id="cotacao" step="0.01" min="0" placeholder="5.50">
         </div>
         <div>
           <label for="quem">Quem pagou</label>
@@ -567,6 +567,12 @@
       return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     };
     const emojiCat = (c) => (c && c.trim().split(' ')[0]) || '📦';
+    // converte um gasto para a moeda pedida usando a cotacao TRAVADA dele
+    const valorEm = (g, moeda) => {
+      const cot = Number(g.cotacao) || 1;
+      if ((g.moeda || 'USD') === moeda) return Number(g.valor);
+      return moeda === 'BRL' ? Number(g.valor) * cot : Number(g.valor) / cot;
+    };
     const fmtData = (d) => {
       if (!d) return '';
       const [y, m, day] = d.split('-');
@@ -614,29 +620,15 @@
     document.getElementById('verUSD').classList.toggle('active', exibir === 'USD');
     document.getElementById('verBRL').classList.toggle('active', exibir === 'BRL');
 
-    // alternar exibicao dos totais entre US$ e R$
+    // alternar exibicao dos totais entre US$ e R$ (recalcula totais e lista)
     document.querySelectorAll('.mb-toggle button').forEach(b => {
       b.addEventListener('click', () => {
         exibir = b.dataset.exibir;
         localStorage.setItem('exibir', exibir);
         document.querySelectorAll('.mb-toggle button').forEach(x => x.classList.toggle('active', x.dataset.exibir === exibir));
-        carregarResumo();
+        atualizar();
       });
     });
-
-    // salvar a cotacao (1 US$ = X R$)
-    async function salvarCotacao() {
-      const v = parseFloat(document.getElementById('cotacao').value);
-      if (!v || v <= 0) { alert('Informe uma cotação válida (ex: 5.50).'); return; }
-      const res = await fetch('/api/config', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cotacao: v })
-      });
-      if (res.ok) { cotacao = v; toast(`💱 Cotação salva: 1 US$ = R$ ${v.toFixed(2)}`); await atualizar(); }
-      else { alert('Erro ao salvar a cotação.'); }
-    }
-    document.getElementById('salvarCot').addEventListener('click', salvarCotacao);
-    document.getElementById('cotacao').addEventListener('keydown', (e) => { if (e.key === 'Enter') salvarCotacao(); });
 
     // ---------- dados ----------
     let ultimoTotal = null;
@@ -646,8 +638,9 @@
       if (!res.ok) return;
       const r = await res.json();
       cotacao = r.cotacao;
+      // pre-preenche a cotacao do formulario com a ultima usada (so se estiver vazia)
       const ci = document.getElementById('cotacao');
-      if (document.activeElement !== ci) ci.value = Number(r.cotacao).toFixed(2);
+      if (!ci.value) ci.value = Number(r.cotacao).toFixed(2);
       document.getElementById('totalGeral').textContent = fmt(r.total_geral);
       document.getElementById('totalFixo').textContent = fmt(r.por_tipo.Fixo);
       document.getElementById('totalViagem').textContent = fmt(r.por_tipo.Viagem);
@@ -684,12 +677,21 @@
             <span class="tag-tipo"></span>
           </div>
         </div>
-        <div class="valor">${fmt(g.valor, g.moeda)}</div>
+        <div class="valor-box">
+          <div class="valor">${fmt(valorEm(g, exibir), exibir)}</div>
+          <div class="orig"></div>
+        </div>
         <button class="del" title="Deletar">🗑️</button>
       `;
       div.querySelector('.desc').textContent = g.descricao;
       div.querySelector('.cat').textContent = g.categoria;
       div.querySelector('.dt').textContent = fmtData(g.data);
+      const orig = div.querySelector('.orig');
+      if ((g.moeda || 'USD') !== exibir) {
+        let txt = fmt(g.valor, g.moeda);
+        if ((g.moeda || 'USD') === 'USD') txt += ' @ ' + Number(g.cotacao).toFixed(2);
+        orig.textContent = txt;
+      }
       const tipo = g.tipo || 'Viagem';
       const badge = div.querySelector('.badge');
       badge.textContent = g.quem; badge.classList.add(g.quem);
@@ -730,6 +732,7 @@
         categoria: document.getElementById('categoria').value,
         tipo: tipoAtual,
         moeda: document.getElementById('moeda').value,
+        cotacao: document.getElementById('cotacao').value,
       };
       const res = await fetch('/api/gastos', {
         method: 'POST',

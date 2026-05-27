@@ -69,6 +69,7 @@ def init_db():
             data TEXT NOT NULL,
             tipo TEXT NOT NULL DEFAULT 'Viagem',
             moeda TEXT NOT NULL DEFAULT 'USD',
+            cotacao {valor_col} NOT NULL DEFAULT 1,
             criado_em TEXT NOT NULL
         )
         """
@@ -80,12 +81,15 @@ def init_db():
     if USE_PG:
         conn.execute("ALTER TABLE gastos ADD COLUMN IF NOT EXISTS tipo TEXT NOT NULL DEFAULT 'Viagem'")
         conn.execute("ALTER TABLE gastos ADD COLUMN IF NOT EXISTS moeda TEXT NOT NULL DEFAULT 'USD'")
+        conn.execute(f"ALTER TABLE gastos ADD COLUMN IF NOT EXISTS cotacao {valor_col} NOT NULL DEFAULT 1")
     else:
         cols = [r[1] for r in conn.execute("PRAGMA table_info(gastos)").fetchall()]
         if "tipo" not in cols:
             conn.execute("ALTER TABLE gastos ADD COLUMN tipo TEXT NOT NULL DEFAULT 'Viagem'")
         if "moeda" not in cols:
             conn.execute("ALTER TABLE gastos ADD COLUMN moeda TEXT NOT NULL DEFAULT 'USD'")
+        if "cotacao" not in cols:
+            conn.execute(f"ALTER TABLE gastos ADD COLUMN cotacao {valor_col} NOT NULL DEFAULT 1")
     # Cotacao padrao (1 USD = X BRL); so insere se ainda nao existir.
     conn.execute(
         "INSERT INTO config (chave, valor) VALUES ('cotacao', '5.50') "
@@ -105,14 +109,15 @@ def get_cotacao(conn):
         return 5.50
 
 
-def converter(valor, moeda, exibir, rate):
-    """Converte um valor da sua moeda para a moeda de exibicao (rate = BRL por 1 USD)."""
+def converter(valor, moeda, exibir, cotacao):
+    """Converte usando a cotacao TRAVADA do proprio gasto (BRL por 1 USD)."""
     moeda = moeda or "USD"
+    cot = cotacao or 1
     if moeda == exibir:
         return valor
     if exibir == "BRL":
-        return valor * rate          # gasto em USD -> BRL
-    return valor / rate              # gasto em BRL -> USD
+        return valor * cot           # gasto em USD -> BRL (custo real do dia)
+    return valor / cot               # gasto em BRL -> USD
 
 
 def login_required(f):
@@ -193,15 +198,31 @@ def inserir_gasto():
 
     criado_em = datetime.now().isoformat()
     conn = get_db()
+
+    # Cotacao TRAVADA no momento do gasto (BRL por 1 USD). Se nao vier,
+    # usa a ultima cotacao salva como padrao.
+    try:
+        cot = float(data.get("cotacao"))
+    except (TypeError, ValueError):
+        cot = 0.0
+    if cot <= 0:
+        cot = get_cotacao(conn)
+
     sql = (
-        "INSERT INTO gastos (descricao, valor, categoria, quem, data, tipo, moeda, criado_em) "
-        f"VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})"
+        "INSERT INTO gastos (descricao, valor, categoria, quem, data, tipo, moeda, cotacao, criado_em) "
+        f"VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})"
     )
-    params = (descricao, valor, categoria, quem, data_gasto, tipo, moeda, criado_em)
+    params = (descricao, valor, categoria, quem, data_gasto, tipo, moeda, cot, criado_em)
     if USE_PG:
         novo_id = conn.execute(sql + " RETURNING id", params).fetchone()["id"]
     else:
         novo_id = conn.execute(sql, params).lastrowid
+    # lembra a ultima cotacao usada (para pre-preencher o formulario depois)
+    conn.execute(
+        f"INSERT INTO config (chave, valor) VALUES ('cotacao', {PH}) "
+        "ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor",
+        (str(cot),),
+    )
     conn.commit()
     row = conn.execute(f"SELECT * FROM gastos WHERE id = {PH}", (novo_id,)).fetchone()
     conn.close()
@@ -228,9 +249,9 @@ def resumo():
         exibir = "USD"
 
     conn = get_db()
-    rate = get_cotacao(conn)
+    ultima = get_cotacao(conn)  # ultima cotacao usada (so para pre-preencher o form)
     rows = conn.execute(
-        "SELECT valor, moeda, categoria, quem, tipo FROM gastos"
+        "SELECT valor, moeda, cotacao, categoria, quem, tipo FROM gastos"
     ).fetchall()
     conn.close()
 
@@ -239,7 +260,7 @@ def resumo():
     por_quem = {"Danilo": 0.0, "Rafaella": 0.0}
     por_tipo = {"Fixo": 0.0, "Viagem": 0.0}
     for r in rows:
-        v = converter(r["valor"], r["moeda"], exibir, rate)
+        v = converter(r["valor"], r["moeda"], exibir, r["cotacao"])
         total += v
         por_categoria[r["categoria"]] = por_categoria.get(r["categoria"], 0.0) + v
         if r["quem"] in por_quem:
@@ -253,7 +274,7 @@ def resumo():
             "por_categoria": por_categoria,
             "por_quem": por_quem,
             "por_tipo": por_tipo,
-            "cotacao": rate,
+            "cotacao": ultima,
             "exibir": exibir,
         }
     )
