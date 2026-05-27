@@ -337,6 +337,9 @@
     /* chuva de dinheiro */
     .coin { position: fixed; z-index: 60; pointer-events: none; will-change: transform, opacity; animation: coinFall 1.7s linear forwards; }
     @keyframes coinFall { 0% { opacity: 1; transform: translateY(-10px) rotate(0); } 100% { opacity: 0; transform: translateY(88vh) rotate(420deg); } }
+    /* rastro animado do cursor (muda por tema) */
+    .trail { position: fixed; z-index: 70; pointer-events: none; font-size: 16px; will-change: transform, opacity; animation: trailFade 0.8s ease-out forwards; }
+    @keyframes trailFade { 0% { opacity: .9; transform: translate(0,0) scale(1) rotate(0); } 100% { opacity: 0; transform: translate(0,-16px) scale(.3) rotate(40deg); } }
     /* aviao */
     .aviao { position: fixed; z-index: 60; pointer-events: none; font-size: 30px; left: -14%; animation: voar 2.6s ease-in forwards; }
     @keyframes voar { 0% { opacity: 0; transform: translate(0,0) rotate(8deg); } 12% { opacity: 1; } 100% { opacity: 0; transform: translate(132vw, -12vh) rotate(8deg); } }
@@ -966,6 +969,28 @@
     const ORDEM = ['magico', 'frozen', 'enrolados', 'carros', 'reileao', 'sereia', 'toystory'];
     let temaIdx = 0;
 
+    // cursor tematico + rastro animado
+    const CURSORES = { magico: '✨', frozen: '❄️', enrolados: '🏮', carros: '🏁', reileao: '🐾', sereia: '🐚', toystory: '🚀' };
+    let cursorEmoji = '✨';
+    function setCursor(emoji) {
+      cursorEmoji = emoji;
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30"><text x="2" y="24" font-size="24">${emoji}</text></svg>`;
+      document.body.style.cursor = `url("data:image/svg+xml,${encodeURIComponent(svg)}") 4 26, auto`;
+    }
+    let _ultRastro = 0;
+    document.addEventListener('mousemove', (e) => {
+      const agora = Date.now();
+      if (agora - _ultRastro < 55) return;
+      _ultRastro = agora;
+      const s = document.createElement('div');
+      s.className = 'trail';
+      s.textContent = cursorEmoji;
+      s.style.left = (e.clientX + 6) + 'px';
+      s.style.top = (e.clientY + 6) + 'px';
+      document.body.appendChild(s);
+      setTimeout(() => s.remove(), 800);
+    });
+
     let ambTimer = null;
 
     // cria um elemento com um desenho SVG da biblioteca, no tamanho dado
@@ -1037,6 +1062,7 @@
       Object.entries(t.vars).forEach(([k, v]) => document.documentElement.style.setProperty(k, v));
       document.getElementById('titulo').textContent = `${t.emoji} Disney Trip`;
       document.getElementById('themeBtn').textContent = `${t.emoji} ${t.nome}`;
+      setCursor(CURSORES[id] || '✨');
       // troca o cenario de fundo: castelo (magico) ou personagens do filme
       const lm = document.getElementById('landmark');
       const castle = document.getElementById('castle');
