@@ -320,6 +320,8 @@
       opacity: 0.55; transition: opacity .15s, transform .15s; flex-shrink: 0;
     }
     .del:hover { opacity: 1; transform: scale(1.2); }
+    .comprar { background: none; border: none; cursor: pointer; font-size: 1.1rem; opacity: 0.7; transition: opacity .15s, transform .15s; flex-shrink: 0; }
+    .comprar:hover { opacity: 1; transform: scale(1.25); }
     .vazio { text-align: center; color: var(--muted); padding: 30px; font-style: italic; }
 
     /* hidden mickey easter egg */
@@ -487,6 +489,7 @@
     <nav class="abas" id="abas">
       <button type="button" class="aba ativa" data-aba="gastos">💸 Gastos</button>
       <button type="button" class="aba" data-aba="metas">🎯 Metas</button>
+      <button type="button" class="aba" data-aba="desejos">🛍️ Desejos</button>
     </nav>
 
     <div id="tab-gastos" class="tab-pane ativo">
@@ -629,6 +632,43 @@
       </div>
     </div><!-- /tab-metas -->
 
+    <div id="tab-desejos" class="tab-pane">
+      <div class="panel">
+        <h2>🌟 Adicionar desejo</h2>
+        <form class="grid" id="formDesejo">
+          <div class="full">
+            <label for="desejoNome">O que vocês querem comprar?</label>
+            <input type="text" id="desejoNome" placeholder="Ex: Tênis Nike, mala nova..." required>
+          </div>
+          <div>
+            <label for="desejoValor">Preço estimado</label>
+            <input type="number" id="desejoValor" step="0.01" min="0" placeholder="0,00">
+          </div>
+          <div>
+            <label for="desejoMoeda">Moeda</label>
+            <select id="desejoMoeda">
+              <option value="USD">US$ Dólar</option>
+              <option value="BRL">R$ Real</option>
+            </select>
+          </div>
+          <div class="full">
+            <label for="desejoQuem">De quem é o desejo?</label>
+            <select id="desejoQuem">
+              <option value="{{ membro1 }}">{{ membro1 }}</option>
+              <option value="{{ membro2 }}">{{ membro2 }}</option>
+              <option value="Dividido">🤝 Os dois</option>
+            </select>
+          </div>
+          <button type="submit" class="btn-add">Adicionar à lista 🌟</button>
+        </form>
+      </div>
+
+      <div class="panel">
+        <h2>✨ Lista de desejos</h2>
+        <div class="lista" id="listaDesejos"></div>
+      </div>
+    </div><!-- /tab-desejos -->
+
   </div>
 
   <div class="mickey" id="mickey" title="...?">🐭</div>
@@ -662,6 +702,7 @@
     // ---------- helpers ----------
     let exibir = localStorage.getItem('exibir') || 'USD';   // moeda de exibicao dos totais
     let cotacao = 5.50;                                     // 1 US$ = X R$
+    let desejoPendente = null;                              // desejo virando gasto
     const fmt = (n, moeda) => {
       n = Number(n || 0);
       const m = moeda || exibir;
@@ -872,6 +913,12 @@
         document.getElementById('descricao').value = '';
         document.getElementById('valor').value = '';
         poeiraEm(window.innerWidth / 2, 120); // sparkle ao adicionar
+        // se este gasto veio de um desejo, tira o desejo da lista
+        if (desejoPendente) {
+          await fetch('/api/desejos/' + desejoPendente, { method: 'DELETE' });
+          desejoPendente = null;
+          toast('🌟 Desejo realizado e movido pros gastos!');
+        }
         await atualizar();
       } else {
         const d = await res.json().catch(() => ({}));
@@ -1328,15 +1375,15 @@
     });
 
     // ================= ABAS =================
-    document.querySelectorAll('.aba').forEach(b => {
-      b.addEventListener('click', () => {
-        document.querySelectorAll('.aba').forEach(x => x.classList.remove('ativa'));
-        b.classList.add('ativa');
-        document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('ativo'));
-        document.getElementById('tab-' + b.dataset.aba).classList.add('ativo');
-        if (b.dataset.aba === 'metas') carregarCofrinho();
-      });
-    });
+    function irParaAba(nome) {
+      document.querySelectorAll('.aba').forEach(x => x.classList.toggle('ativa', x.dataset.aba === nome));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('ativo'));
+      document.getElementById('tab-' + nome).classList.add('ativo');
+      if (nome === 'metas') carregarCofrinho();
+      if (nome === 'desejos') carregarDesejos();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    document.querySelectorAll('.aba').forEach(b => b.addEventListener('click', () => irParaAba(b.dataset.aba)));
 
     // ================= COFRINHO (meta por pessoa + total junto) =================
     document.getElementById('aporteData').value = new Date().toISOString().slice(0, 10);
@@ -1430,6 +1477,83 @@
       });
       if (res.ok) { toast(`🎯 Meta de ${quem} salva!`); carregarCofrinho(); }
       else { alert('Erro ao salvar a meta.'); }
+    }
+
+    // ================= LISTA DE DESEJOS =================
+    document.getElementById('desejoQuem').value = USUARIO_ATUAL;
+
+    async function carregarDesejos() {
+      const res = await fetch('/api/desejos');
+      if (!res.ok) return;
+      const desejos = await res.json();
+      const lista = document.getElementById('listaDesejos');
+      lista.innerHTML = '';
+      if (!desejos.length) {
+        lista.innerHTML = '<div class="vazio">Nenhum desejo na lista ainda. O que vocês querem comprar? 🌟</div>';
+        return;
+      }
+      desejos.forEach(d => {
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.innerHTML = `
+          <div class="emoji">🛍️</div>
+          <div class="info">
+            <div class="desc"></div>
+            <div class="meta"><span class="tag-resp"></span></div>
+          </div>
+          <div class="valor">${d.valor > 0 ? fmt(d.valor, d.moeda) : '—'}</div>
+          <button class="comprar" title="Comprei!">✅</button>
+          <button class="del" title="Remover">🗑️</button>`;
+        div.querySelector('.desc').textContent = d.nome;
+        const tr = div.querySelector('.tag-resp');
+        tr.textContent = d.quem === 'Dividido' ? '🤝 dos dois' : (d.quem ? 'de ' + d.quem : '');
+        div.querySelector('.comprar').addEventListener('click', () => comprarDesejo(d));
+        div.querySelector('.del').addEventListener('click', async () => {
+          if (!confirm(`Remover "${d.nome}" da lista?`)) return;
+          await fetch('/api/desejos/' + d.id, { method: 'DELETE' });
+          carregarDesejos();
+        });
+        lista.appendChild(div);
+      });
+    }
+
+    document.getElementById('formDesejo').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const body = {
+        nome: document.getElementById('desejoNome').value.trim(),
+        valor: document.getElementById('desejoValor').value || 0,
+        moeda: document.getElementById('desejoMoeda').value,
+        quem: document.getElementById('desejoQuem').value,
+      };
+      const res = await fetch('/api/desejos', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+      });
+      if (res.ok) {
+        document.getElementById('desejoNome').value = '';
+        document.getElementById('desejoValor').value = '';
+        carregarDesejos();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        alert(d.erro || 'Erro ao adicionar desejo.');
+      }
+    });
+
+    // "Comprei": pre-preenche o formulario de gasto e marca o desejo pra sair da lista
+    function comprarDesejo(d) {
+      tipoAtual = 'Viagem';
+      document.querySelectorAll('.toggle button').forEach(x => x.classList.toggle('active', x.dataset.tipo === 'Viagem'));
+      preencherCategorias();
+      document.getElementById('descricao').value = d.nome;
+      document.getElementById('valor').value = d.valor > 0 ? d.valor : '';
+      document.getElementById('moeda').value = d.moeda;
+      document.getElementById('categoria').value = '🛍️ Comprinhas';
+      if (d.quem === 'Dividido') document.getElementById('responsavel').value = 'Dividido';
+      else if (d.quem) document.getElementById('responsavel').value = d.quem;
+      syncCotacaoEstado();
+      desejoPendente = d.id;
+      irParaAba('gastos');
+      document.getElementById('descricao').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      toast('🛒 Confirme os dados e clique Adicionar — sai da lista de desejos ✨');
     }
 
     document.getElementById('formAporte').addEventListener('submit', async (e) => {

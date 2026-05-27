@@ -106,6 +106,19 @@ def init_db():
         )
         """
     )
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS desejos (
+            id {id_col},
+            nome TEXT NOT NULL,
+            valor {valor_col} NOT NULL DEFAULT 0,
+            moeda TEXT NOT NULL DEFAULT 'USD',
+            quem TEXT NOT NULL DEFAULT '',
+            grupo TEXT NOT NULL DEFAULT 'casal1',
+            criado_em TEXT NOT NULL
+        )
+        """
+    )
     # Migracoes para bancos criados antes destes campos.
     if USE_PG:
         conn.execute("ALTER TABLE gastos ADD COLUMN IF NOT EXISTS tipo TEXT NOT NULL DEFAULT 'Viagem'")
@@ -524,6 +537,72 @@ def del_aporte(aporte_id):
     conn.close()
     if cur.rowcount == 0:
         return jsonify({"erro": "Aporte nao encontrado"}), 404
+    return jsonify({"ok": True})
+
+
+@app.route("/api/desejos", methods=["GET"])
+@login_required
+def listar_desejos():
+    grupo = session["grupo"]
+    conn = get_db()
+    rows = conn.execute(
+        f"SELECT * FROM desejos WHERE grupo = {PH} ORDER BY id DESC", (grupo,)
+    ).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/desejos", methods=["POST"])
+@login_required
+def add_desejo():
+    data = request.get_json(silent=True) or {}
+    grupo = session["grupo"]
+    membros = GRUPOS[grupo]["membros"]
+    nome = (data.get("nome") or "").strip()
+    if not nome:
+        return jsonify({"erro": "Nome obrigatorio"}), 400
+    moeda = (data.get("moeda") or "USD").strip().upper()
+    if moeda not in ("USD", "BRL"):
+        moeda = "USD"
+    quem = (data.get("quem") or "").strip()
+    if quem not in membros:
+        quem = ""
+    try:
+        valor = float(data.get("valor"))
+    except (TypeError, ValueError):
+        valor = 0.0
+    if valor < 0:
+        valor = 0.0
+
+    criado_em = datetime.now().isoformat()
+    conn = get_db()
+    sql = (
+        "INSERT INTO desejos (nome, valor, moeda, quem, grupo, criado_em) "
+        f"VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH})"
+    )
+    params = (nome, valor, moeda, quem, grupo, criado_em)
+    if USE_PG:
+        novo_id = conn.execute(sql + " RETURNING id", params).fetchone()["id"]
+    else:
+        novo_id = conn.execute(sql, params).lastrowid
+    conn.commit()
+    row = conn.execute(f"SELECT * FROM desejos WHERE id = {PH}", (novo_id,)).fetchone()
+    conn.close()
+    return jsonify(dict(row)), 201
+
+
+@app.route("/api/desejos/<int:desejo_id>", methods=["DELETE"])
+@login_required
+def del_desejo(desejo_id):
+    grupo = session["grupo"]
+    conn = get_db()
+    cur = conn.execute(
+        f"DELETE FROM desejos WHERE id = {PH} AND grupo = {PH}", (desejo_id, grupo)
+    )
+    conn.commit()
+    conn.close()
+    if cur.rowcount == 0:
+        return jsonify({"erro": "Desejo nao encontrado"}), 404
     return jsonify({"ok": True})
 
 
