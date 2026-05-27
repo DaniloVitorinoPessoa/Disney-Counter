@@ -201,8 +201,8 @@
     .stat .val { font-family: 'Cinzel', serif; font-size: 1.15rem; margin-top: 7px; font-weight: 700; }
     .stat.fixo .val { color: #fca5a5; }
     .stat.viagem .val { color: var(--gold); }
-    .stat.danilo .val { color: #7dd3fc; }
-    .stat.rafaella .val { color: var(--lilac); }
+    .stat.p1 .val { color: #7dd3fc; }
+    .stat.p2 .val { color: var(--lilac); }
 
     .panel {
       background: var(--card); border: 1px solid var(--border);
@@ -265,8 +265,8 @@
       font-size: 0.7rem; font-weight: 800; padding: 2px 9px; border-radius: 20px;
       text-transform: uppercase; letter-spacing: 0.5px;
     }
-    .badge.Danilo { background: rgba(125,211,252,0.18); color: #7dd3fc; }
-    .badge.Rafaella { background: rgba(192,132,252,0.18); color: var(--lilac); }
+    .badge.p1 { background: rgba(125,211,252,0.18); color: #7dd3fc; }
+    .badge.p2 { background: rgba(192,132,252,0.18); color: var(--lilac); }
     .tag-tipo {
       font-size: 0.65rem; font-weight: 800; padding: 2px 8px; border-radius: 20px;
       text-transform: uppercase; letter-spacing: 0.5px;
@@ -430,7 +430,7 @@
       <a class="logout" href="/logout">Sair</a>
       <h1 id="titulo">✨ Disney Trip</h1>
       <div class="sub">RASTREADOR DE GASTOS</div>
-      <div class="nomes">💛 Danilo &amp; Rafaella 💜</div>
+      <div class="nomes">💛 {{ grupo_nome }} 💜</div>
     </header>
 
     <div class="countdown" id="countdown">
@@ -469,13 +469,13 @@
         <div class="lbl">🏰 Na viagem</div>
         <div class="val" id="totalViagem">$0.00</div>
       </div>
-      <div class="stat danilo">
-        <div class="lbl">Danilo</div>
-        <div class="val" id="totalDanilo">$0.00</div>
+      <div class="stat p1">
+        <div class="lbl">{{ membro1 }}</div>
+        <div class="val" id="totalP1">$0.00</div>
       </div>
-      <div class="stat rafaella">
-        <div class="lbl">Rafaella</div>
-        <div class="val" id="totalRafaella">$0.00</div>
+      <div class="stat p2">
+        <div class="lbl">{{ membro2 }}</div>
+        <div class="val" id="totalP2">$0.00</div>
       </div>
     </div>
 
@@ -508,8 +508,8 @@
         <div>
           <label for="quem">Quem pagou</label>
           <select id="quem">
-            <option value="Danilo">Danilo</option>
-            <option value="Rafaella">Rafaella</option>
+            <option value="{{ membro1 }}">{{ membro1 }}</option>
+            <option value="{{ membro2 }}">{{ membro2 }}</option>
           </select>
         </div>
         <div>
@@ -541,6 +541,8 @@
   <script src="{{ url_for('static', filename='temas.js') }}"></script>
   <script>
     const USUARIO_ATUAL = "{{ usuario }}";
+    const MEMBROS = ["{{ membro1 }}", "{{ membro2 }}"];
+    const GRUPO_NOME = "{{ grupo_nome }}";
 
     const CATEGORIAS = {
       Fixo: ["✈️ Passagem", "🛂 Visto", "📄 Passaporte", "🏦 Agência", "💉 Vacina", "📦 Outros"],
@@ -656,8 +658,8 @@
       document.getElementById('totalGeral').textContent = fmt(r.total_geral);
       document.getElementById('totalFixo').textContent = fmt(r.por_tipo.Fixo);
       document.getElementById('totalViagem').textContent = fmt(r.por_tipo.Viagem);
-      document.getElementById('totalDanilo').textContent = fmt(r.por_quem.Danilo);
-      document.getElementById('totalRafaella').textContent = fmt(r.por_quem.Rafaella);
+      document.getElementById('totalP1').textContent = fmt(r.por_quem[MEMBROS[0]]);
+      document.getElementById('totalP2').textContent = fmt(r.por_quem[MEMBROS[1]]);
 
       // easter egg: marcos mágicos de total
       const marcos = [1000, 5000, 10000, 20000];
@@ -706,7 +708,7 @@
       }
       const tipo = g.tipo || 'Viagem';
       const badge = div.querySelector('.badge');
-      badge.textContent = g.quem; badge.classList.add(g.quem);
+      badge.textContent = g.quem; badge.classList.add(g.quem === MEMBROS[1] ? 'p2' : 'p1');
       const tt = div.querySelector('.tag-tipo');
       tt.textContent = tipo === 'Fixo' ? '🧳 fixo' : '🏰 viagem';
       tt.classList.add(tipo);
@@ -837,7 +839,7 @@
     // mickey escondido
     let mickeyCount = 0;
     const recados = [
-      '💕 Danilo + Rafaella — rumo à Disney!',
+      `💕 ${GRUPO_NOME} — rumo à Disney!`,
       '🏰 O melhor gasto é o que vira memória.',
       '🐭 Hidden Mickey encontrado! Você tem olhos mágicos.',
       '✨ "If you can dream it, you can do it." — Walt Disney',
@@ -931,11 +933,11 @@
     const reacaoCard = {
       fixo: () => { aviao(); toast('🧳 As malas já estão na cabeça de vocês!'); },
       viagem: () => { confete(); toast('🏰 Onze dias de pura magia esperando!'); },
-      danilo: (el) => { const c = centro(el); coracoes('💙', c.x, c.y); toast('🕺 Bora, Danilo! O Mickey tá esperando!'); },
-      rafaella: (el) => { const c = centro(el); coracoes('💜', c.x, c.y); toast('💃 Rafaella, a princesa dessa viagem!'); }
+      p1: (el) => { const c = centro(el); coracoes('💙', c.x, c.y); toast(`✨ Bora, ${MEMBROS[0]}! O Mickey tá esperando!`); },
+      p2: (el) => { const c = centro(el); coracoes('💜', c.x, c.y); toast(`✨ ${MEMBROS[1]}, partiu Disney!`); }
     };
     document.querySelectorAll('.stat').forEach(card => {
-      const tipo = ['fixo', 'viagem', 'danilo', 'rafaella'].find(t => card.classList.contains(t));
+      const tipo = ['fixo', 'viagem', 'p1', 'p2'].find(t => card.classList.contains(t));
       card.addEventListener('click', () => { pop(card); if (reacaoCard[tipo]) reacaoCard[tipo](card); });
     });
 
@@ -1199,7 +1201,7 @@
         setTimeout(fogos, 450);
         const d = diasRestantes();
         if (d > 0) {
-          toast(`✨ Bem-vindos, Danilo & Rafaella! Faltam ${d} dias! ✨`);
+          toast(`✨ Bem-vindos, ${GRUPO_NOME}! Faltam ${d} dias! ✨`);
         } else {
           toast('✨ Bem-vindos de volta! ✨');
         }

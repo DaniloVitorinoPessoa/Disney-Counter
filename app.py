@@ -36,14 +36,29 @@ if USE_PG:
     import psycopg
     from psycopg.rows import dict_row
 
-# Senhas vem SO de variaveis de ambiente (nenhuma senha fica no codigo).
+# Grupos (casais). Cada casal so enxerga os proprios gastos.
+GRUPOS = {
+    "casal1": {"nome": "Danilo & Rafaella", "membros": ["Danilo", "Rafaella"]},
+    "casal2": {"nome": "Pedro & Giovanna", "membros": ["Pedro", "Giovanna"]},
+}
+
+# Usuarios: nome (minusculo) -> {nome canonico, grupo, hash da senha}.
+# Senhas vem SO de variaveis de ambiente (nada de senha no codigo).
 # Localmente, defina-as no arquivo .env (que NAO vai pro Git).
-# Se a variavel nao existir, aquele usuario simplesmente nao consegue logar.
 USUARIOS = {}
-for _nome, _var in (("Danilo", "DANILO_SENHA"), ("Rafaella", "RAFAELLA_SENHA")):
+for _nome, _grupo, _var in (
+    ("Danilo", "casal1", "DANILO_SENHA"),
+    ("Rafaella", "casal1", "RAFAELLA_SENHA"),
+    ("Pedro", "casal2", "PEDRO_SENHA"),
+    ("Giovanna", "casal2", "GIOVANNA_SENHA"),
+):
     _senha = os.environ.get(_var)
     if _senha:
-        USUARIOS[_nome] = generate_password_hash(_senha)
+        USUARIOS[_nome.lower()] = {
+            "nome": _nome,
+            "grupo": _grupo,
+            "hash": generate_password_hash(_senha),
+        }
 
 
 def get_db():
@@ -70,6 +85,7 @@ def init_db():
             tipo TEXT NOT NULL DEFAULT 'Viagem',
             moeda TEXT NOT NULL DEFAULT 'USD',
             cotacao {valor_col} NOT NULL DEFAULT 1,
+            grupo TEXT NOT NULL DEFAULT 'casal1',
             criado_em TEXT NOT NULL
         )
         """
@@ -82,6 +98,7 @@ def init_db():
         conn.execute("ALTER TABLE gastos ADD COLUMN IF NOT EXISTS tipo TEXT NOT NULL DEFAULT 'Viagem'")
         conn.execute("ALTER TABLE gastos ADD COLUMN IF NOT EXISTS moeda TEXT NOT NULL DEFAULT 'USD'")
         conn.execute(f"ALTER TABLE gastos ADD COLUMN IF NOT EXISTS cotacao {valor_col} NOT NULL DEFAULT 1")
+        conn.execute("ALTER TABLE gastos ADD COLUMN IF NOT EXISTS grupo TEXT NOT NULL DEFAULT 'casal1'")
     else:
         cols = [r[1] for r in conn.execute("PRAGMA table_info(gastos)").fetchall()]
         if "tipo" not in cols:
@@ -90,18 +107,15 @@ def init_db():
             conn.execute("ALTER TABLE gastos ADD COLUMN moeda TEXT NOT NULL DEFAULT 'USD'")
         if "cotacao" not in cols:
             conn.execute(f"ALTER TABLE gastos ADD COLUMN cotacao {valor_col} NOT NULL DEFAULT 1")
-    # Cotacao padrao (1 USD = X BRL); so insere se ainda nao existir.
-    conn.execute(
-        "INSERT INTO config (chave, valor) VALUES ('cotacao', '5.50') "
-        "ON CONFLICT (chave) DO NOTHING"
-    )
+        if "grupo" not in cols:
+            conn.execute("ALTER TABLE gastos ADD COLUMN grupo TEXT NOT NULL DEFAULT 'casal1'")
     conn.commit()
     conn.close()
 
 
-def get_cotacao(conn):
+def get_cotacao(conn, grupo):
     row = conn.execute(
-        f"SELECT valor FROM config WHERE chave = {PH}", ("cotacao",)
+        f"SELECT valor FROM config WHERE chave = {PH}", (f"cotacao:{grupo}",)
     ).fetchone()
     try:
         return float(row["valor"]) if row else 5.50
@@ -123,7 +137,7 @@ def converter(valor, moeda, exibir, cotacao):
 def login_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
-        if "usuario" not in session:
+        if "usuario" not in session or "grupo" not in session:
             if request.path.startswith("/api/"):
                 return jsonify({"erro": "Nao autenticado"}), 401
             return redirect(url_for("login"))
@@ -143,10 +157,11 @@ def login():
     usuario = (data.get("usuario") or "").strip()
     senha = data.get("senha") or ""
 
-    hash_senha = USUARIOS.get(usuario)
-    if hash_senha and check_password_hash(hash_senha, senha):
-        session["usuario"] = usuario
-        return jsonify({"ok": True, "usuario": usuario})
+    u = USUARIOS.get(usuario.lower())
+    if u and check_password_hash(u["hash"], senha):
+        session["usuario"] = u["nome"]
+        session["grupo"] = u["grupo"]
+        return jsonify({"ok": True, "usuario": u["nome"]})
     return jsonify({"erro": "Usuario ou senha invalidos"}), 401
 
 
@@ -159,15 +174,24 @@ def logout():
 @app.route("/")
 @login_required
 def index():
-    return render_template("index.html", usuario=session["usuario"])
+    g = GRUPOS[session["grupo"]]
+    return render_template(
+        "index.html",
+        usuario=session["usuario"],
+        grupo_nome=g["nome"],
+        membro1=g["membros"][0],
+        membro2=g["membros"][1],
+    )
 
 
 @app.route("/api/gastos", methods=["GET"])
 @login_required
 def listar_gastos():
+    grupo = session["grupo"]
     conn = get_db()
     rows = conn.execute(
-        "SELECT * FROM gastos ORDER BY criado_em DESC, id DESC"
+        f"SELECT * FROM gastos WHERE grupo = {PH} ORDER BY criado_em DESC, id DESC",
+        (grupo,),
     ).fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
@@ -196,32 +220,37 @@ def inserir_gasto():
     if not descricao or not categoria or not quem or not data_gasto:
         return jsonify({"erro": "Campos obrigatorios ausentes"}), 400
 
+    grupo = session["grupo"]
+    membros = GRUPOS[grupo]["membros"]
+    if quem not in membros:
+        quem = session["usuario"]
+
     criado_em = datetime.now().isoformat()
     conn = get_db()
 
     # Cotacao TRAVADA no momento do gasto (BRL por 1 USD). Se nao vier,
-    # usa a ultima cotacao salva como padrao.
+    # usa a ultima cotacao salva do grupo como padrao.
     try:
         cot = float(data.get("cotacao"))
     except (TypeError, ValueError):
         cot = 0.0
     if cot <= 0:
-        cot = get_cotacao(conn)
+        cot = get_cotacao(conn, grupo)
 
     sql = (
-        "INSERT INTO gastos (descricao, valor, categoria, quem, data, tipo, moeda, cotacao, criado_em) "
-        f"VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})"
+        "INSERT INTO gastos (descricao, valor, categoria, quem, data, tipo, moeda, cotacao, grupo, criado_em) "
+        f"VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})"
     )
-    params = (descricao, valor, categoria, quem, data_gasto, tipo, moeda, cot, criado_em)
+    params = (descricao, valor, categoria, quem, data_gasto, tipo, moeda, cot, grupo, criado_em)
     if USE_PG:
         novo_id = conn.execute(sql + " RETURNING id", params).fetchone()["id"]
     else:
         novo_id = conn.execute(sql, params).lastrowid
-    # lembra a ultima cotacao usada (para pre-preencher o formulario depois)
+    # lembra a ultima cotacao usada DO GRUPO (para pre-preencher o formulario)
     conn.execute(
-        f"INSERT INTO config (chave, valor) VALUES ('cotacao', {PH}) "
+        f"INSERT INTO config (chave, valor) VALUES ({PH}, {PH}) "
         "ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor",
-        (str(cot),),
+        (f"cotacao:{grupo}", str(cot)),
     )
     conn.commit()
     row = conn.execute(f"SELECT * FROM gastos WHERE id = {PH}", (novo_id,)).fetchone()
@@ -232,8 +261,11 @@ def inserir_gasto():
 @app.route("/api/gastos/<int:gasto_id>", methods=["DELETE"])
 @login_required
 def deletar_gasto(gasto_id):
+    grupo = session["grupo"]
     conn = get_db()
-    cur = conn.execute(f"DELETE FROM gastos WHERE id = {PH}", (gasto_id,))
+    cur = conn.execute(
+        f"DELETE FROM gastos WHERE id = {PH} AND grupo = {PH}", (gasto_id, grupo)
+    )
     conn.commit()
     conn.close()
     if cur.rowcount == 0:
@@ -248,16 +280,19 @@ def resumo():
     if exibir not in ("USD", "BRL"):
         exibir = "USD"
 
+    grupo = session["grupo"]
+    membros = GRUPOS[grupo]["membros"]
     conn = get_db()
-    ultima = get_cotacao(conn)  # ultima cotacao usada (so para pre-preencher o form)
+    ultima = get_cotacao(conn, grupo)  # ultima cotacao do grupo (pre-preenche o form)
     rows = conn.execute(
-        "SELECT valor, moeda, cotacao, categoria, quem, tipo FROM gastos"
+        f"SELECT valor, moeda, cotacao, categoria, quem, tipo FROM gastos WHERE grupo = {PH}",
+        (grupo,),
     ).fetchall()
     conn.close()
 
     total = 0.0
     por_categoria = {}
-    por_quem = {"Danilo": 0.0, "Rafaella": 0.0}
+    por_quem = {m: 0.0 for m in membros}
     por_tipo = {"Fixo": 0.0, "Viagem": 0.0}
     for r in rows:
         v = converter(r["valor"], r["moeda"], exibir, r["cotacao"])
@@ -284,7 +319,7 @@ def resumo():
 @login_required
 def get_config():
     conn = get_db()
-    rate = get_cotacao(conn)
+    rate = get_cotacao(conn, session["grupo"])
     conn.close()
     return jsonify({"cotacao": rate})
 
@@ -301,9 +336,9 @@ def set_config():
         return jsonify({"erro": "Cotacao invalida"}), 400
     conn = get_db()
     conn.execute(
-        f"INSERT INTO config (chave, valor) VALUES ('cotacao', {PH}) "
+        f"INSERT INTO config (chave, valor) VALUES ({PH}, {PH}) "
         "ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor",
-        (str(cot),),
+        (f"cotacao:{session['grupo']}", str(cot)),
     )
     conn.commit()
     conn.close()
