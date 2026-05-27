@@ -127,6 +127,33 @@
     .hero .lbl { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 2px; }
     .hero .val { font-family: 'Cinzel', serif; font-size: 2.6rem; color: var(--gold); margin-top: 6px; font-weight: 700; text-shadow: 0 0 24px rgba(245,200,66,0.35); }
 
+    /* barra de moeda: alternar exibicao e definir cotacao */
+    .moeda-bar {
+      display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center;
+      background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+      padding: 10px 14px; margin-bottom: 16px; backdrop-filter: blur(3px);
+    }
+    .mb-grupo { display: flex; align-items: center; gap: 8px; }
+    .mb-lbl { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+    .mb-prefixo { color: var(--muted); font-weight: 700; }
+    .mb-toggle { display: flex; gap: 4px; }
+    .mb-toggle button {
+      padding: 6px 14px; border-radius: 10px; cursor: pointer; font-weight: 800; font-size: 0.9rem;
+      border: 1px solid var(--border); background: rgba(10,14,46,0.5); color: var(--muted);
+      font-family: 'Nunito', sans-serif; transition: all .12s;
+    }
+    .mb-toggle button.active { background: var(--gold); color: #1a1200; border-color: transparent; }
+    .moeda-bar input#cotacao {
+      width: 84px; padding: 7px 9px; border-radius: 10px; text-align: right;
+      border: 1px solid var(--border); background: rgba(10,14,46,0.8); color: var(--text);
+      font-family: 'Nunito', sans-serif; font-size: 0.95rem; font-weight: 700;
+    }
+    .moeda-bar input#cotacao:focus { outline: none; border-color: var(--gold); }
+    #salvarCot {
+      padding: 7px 11px; border: none; border-radius: 10px; cursor: pointer;
+      background: linear-gradient(135deg, var(--gold), #e0a91f); color: #1a1200; font-weight: 800;
+    }
+
     /* titulo com brilho animado */
     #titulo {
       display: inline-block;
@@ -417,6 +444,22 @@
       <div class="val" id="totalGeral">$0.00</div>
     </div>
 
+    <div class="moeda-bar">
+      <div class="mb-grupo">
+        <span class="mb-lbl">Ver em</span>
+        <div class="mb-toggle">
+          <button type="button" data-exibir="USD" id="verUSD" class="active">US$</button>
+          <button type="button" data-exibir="BRL" id="verBRL">R$</button>
+        </div>
+      </div>
+      <div class="mb-grupo">
+        <span class="mb-lbl">1 US$ =</span>
+        <span class="mb-prefixo">R$</span>
+        <input type="number" id="cotacao" step="0.01" min="0" inputmode="decimal">
+        <button type="button" id="salvarCot" title="Salvar cotação">✓</button>
+      </div>
+    </div>
+
     <div class="cards">
       <div class="stat fixo">
         <div class="lbl">🧳 Pré-viagem</div>
@@ -448,8 +491,15 @@
           <input type="text" id="descricao" placeholder="Ex: Almoço no Magic Kingdom" required>
         </div>
         <div>
-          <label for="valor">Valor (USD)</label>
+          <label for="valor">Valor</label>
           <input type="number" id="valor" step="0.01" min="0" placeholder="0.00" required>
+        </div>
+        <div>
+          <label for="moeda">Moeda</label>
+          <select id="moeda">
+            <option value="USD">US$ Dólar</option>
+            <option value="BRL">R$ Real</option>
+          </select>
         </div>
         <div>
           <label for="quem">Quem pagou</label>
@@ -508,7 +558,14 @@
     }
 
     // ---------- helpers ----------
-    const fmt = (n) => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    let exibir = localStorage.getItem('exibir') || 'USD';   // moeda de exibicao dos totais
+    let cotacao = 5.50;                                     // 1 US$ = X R$
+    const fmt = (n, moeda) => {
+      n = Number(n || 0);
+      const m = moeda || exibir;
+      if (m === 'BRL') return 'R$ ' + n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
     const emojiCat = (c) => (c && c.trim().split(' ')[0]) || '📦';
     const fmtData = (d) => {
       if (!d) return '';
@@ -532,6 +589,8 @@
         document.querySelectorAll('.toggle button').forEach(x => x.classList.remove('active'));
         b.classList.add('active');
         tipoAtual = b.dataset.tipo;
+        // padrao: pre-viagem (fixo) costuma ser em R$; na viagem, em US$
+        document.getElementById('moeda').value = tipoAtual === 'Fixo' ? 'BRL' : 'USD';
         preencherCategorias();
       });
     });
@@ -551,13 +610,44 @@
     document.getElementById('quem').value = USUARIO_ATUAL;
     preencherCategorias();
 
+    // estado inicial do seletor de exibicao (US$/R$)
+    document.getElementById('verUSD').classList.toggle('active', exibir === 'USD');
+    document.getElementById('verBRL').classList.toggle('active', exibir === 'BRL');
+
+    // alternar exibicao dos totais entre US$ e R$
+    document.querySelectorAll('.mb-toggle button').forEach(b => {
+      b.addEventListener('click', () => {
+        exibir = b.dataset.exibir;
+        localStorage.setItem('exibir', exibir);
+        document.querySelectorAll('.mb-toggle button').forEach(x => x.classList.toggle('active', x.dataset.exibir === exibir));
+        carregarResumo();
+      });
+    });
+
+    // salvar a cotacao (1 US$ = X R$)
+    async function salvarCotacao() {
+      const v = parseFloat(document.getElementById('cotacao').value);
+      if (!v || v <= 0) { alert('Informe uma cotação válida (ex: 5.50).'); return; }
+      const res = await fetch('/api/config', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cotacao: v })
+      });
+      if (res.ok) { cotacao = v; toast(`💱 Cotação salva: 1 US$ = R$ ${v.toFixed(2)}`); await atualizar(); }
+      else { alert('Erro ao salvar a cotação.'); }
+    }
+    document.getElementById('salvarCot').addEventListener('click', salvarCotacao);
+    document.getElementById('cotacao').addEventListener('keydown', (e) => { if (e.key === 'Enter') salvarCotacao(); });
+
     // ---------- dados ----------
     let ultimoTotal = null;
 
     async function carregarResumo() {
-      const res = await fetch('/api/resumo');
+      const res = await fetch('/api/resumo?exibir=' + exibir);
       if (!res.ok) return;
       const r = await res.json();
+      cotacao = r.cotacao;
+      const ci = document.getElementById('cotacao');
+      if (document.activeElement !== ci) ci.value = Number(r.cotacao).toFixed(2);
       document.getElementById('totalGeral').textContent = fmt(r.total_geral);
       document.getElementById('totalFixo').textContent = fmt(r.por_tipo.Fixo);
       document.getElementById('totalViagem').textContent = fmt(r.por_tipo.Viagem);
@@ -594,7 +684,7 @@
             <span class="tag-tipo"></span>
           </div>
         </div>
-        <div class="valor">${fmt(g.valor)}</div>
+        <div class="valor">${fmt(g.valor, g.moeda)}</div>
         <button class="del" title="Deletar">🗑️</button>
       `;
       div.querySelector('.desc').textContent = g.descricao;
@@ -639,6 +729,7 @@
         data: document.getElementById('data').value,
         categoria: document.getElementById('categoria').value,
         tipo: tipoAtual,
+        moeda: document.getElementById('moeda').value,
       };
       const res = await fetch('/api/gastos', {
         method: 'POST',

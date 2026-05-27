@@ -68,23 +68,51 @@ def init_db():
             quem TEXT NOT NULL,
             data TEXT NOT NULL,
             tipo TEXT NOT NULL DEFAULT 'Viagem',
+            moeda TEXT NOT NULL DEFAULT 'USD',
             criado_em TEXT NOT NULL
         )
         """
     )
-    # Migracao: garante a coluna 'tipo' em bancos criados antes desse campo.
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS config (chave TEXT PRIMARY KEY, valor TEXT)"
+    )
+    # Migracoes para bancos criados antes destes campos.
     if USE_PG:
-        conn.execute(
-            "ALTER TABLE gastos ADD COLUMN IF NOT EXISTS tipo TEXT NOT NULL DEFAULT 'Viagem'"
-        )
+        conn.execute("ALTER TABLE gastos ADD COLUMN IF NOT EXISTS tipo TEXT NOT NULL DEFAULT 'Viagem'")
+        conn.execute("ALTER TABLE gastos ADD COLUMN IF NOT EXISTS moeda TEXT NOT NULL DEFAULT 'USD'")
     else:
         cols = [r[1] for r in conn.execute("PRAGMA table_info(gastos)").fetchall()]
         if "tipo" not in cols:
-            conn.execute(
-                "ALTER TABLE gastos ADD COLUMN tipo TEXT NOT NULL DEFAULT 'Viagem'"
-            )
+            conn.execute("ALTER TABLE gastos ADD COLUMN tipo TEXT NOT NULL DEFAULT 'Viagem'")
+        if "moeda" not in cols:
+            conn.execute("ALTER TABLE gastos ADD COLUMN moeda TEXT NOT NULL DEFAULT 'USD'")
+    # Cotacao padrao (1 USD = X BRL); so insere se ainda nao existir.
+    conn.execute(
+        "INSERT INTO config (chave, valor) VALUES ('cotacao', '5.50') "
+        "ON CONFLICT (chave) DO NOTHING"
+    )
     conn.commit()
     conn.close()
+
+
+def get_cotacao(conn):
+    row = conn.execute(
+        f"SELECT valor FROM config WHERE chave = {PH}", ("cotacao",)
+    ).fetchone()
+    try:
+        return float(row["valor"]) if row else 5.50
+    except (TypeError, ValueError):
+        return 5.50
+
+
+def converter(valor, moeda, exibir, rate):
+    """Converte um valor da sua moeda para a moeda de exibicao (rate = BRL por 1 USD)."""
+    moeda = moeda or "USD"
+    if moeda == exibir:
+        return valor
+    if exibir == "BRL":
+        return valor * rate          # gasto em USD -> BRL
+    return valor / rate              # gasto em BRL -> USD
 
 
 def login_required(f):
@@ -151,6 +179,9 @@ def inserir_gasto():
     tipo = (data.get("tipo") or "Viagem").strip()
     if tipo not in ("Fixo", "Viagem"):
         tipo = "Viagem"
+    moeda = (data.get("moeda") or "USD").strip().upper()
+    if moeda not in ("USD", "BRL"):
+        moeda = "USD"
 
     try:
         valor = float(data.get("valor"))
@@ -163,10 +194,10 @@ def inserir_gasto():
     criado_em = datetime.now().isoformat()
     conn = get_db()
     sql = (
-        "INSERT INTO gastos (descricao, valor, categoria, quem, data, tipo, criado_em) "
-        f"VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})"
+        "INSERT INTO gastos (descricao, valor, categoria, quem, data, tipo, moeda, criado_em) "
+        f"VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})"
     )
-    params = (descricao, valor, categoria, quem, data_gasto, tipo, criado_em)
+    params = (descricao, valor, categoria, quem, data_gasto, tipo, moeda, criado_em)
     if USE_PG:
         novo_id = conn.execute(sql + " RETURNING id", params).fetchone()["id"]
     else:
@@ -192,52 +223,70 @@ def deletar_gasto(gasto_id):
 @app.route("/api/resumo", methods=["GET"])
 @login_required
 def resumo():
+    exibir = request.args.get("exibir", "USD").upper()
+    if exibir not in ("USD", "BRL"):
+        exibir = "USD"
+
     conn = get_db()
-
-    total_geral = conn.execute(
-        "SELECT COALESCE(SUM(valor), 0) AS t FROM gastos"
-    ).fetchone()["t"]
-
-    por_categoria = {
-        r["categoria"]: r["t"]
-        for r in conn.execute(
-            "SELECT categoria, SUM(valor) AS t FROM gastos GROUP BY categoria"
-        ).fetchall()
-    }
-
-    por_quem_rows = {
-        r["quem"]: r["t"]
-        for r in conn.execute(
-            "SELECT quem, SUM(valor) AS t FROM gastos GROUP BY quem"
-        ).fetchall()
-    }
-
-    por_tipo_rows = {
-        r["tipo"]: r["t"]
-        for r in conn.execute(
-            "SELECT tipo, SUM(valor) AS t FROM gastos GROUP BY tipo"
-        ).fetchall()
-    }
+    rate = get_cotacao(conn)
+    rows = conn.execute(
+        "SELECT valor, moeda, categoria, quem, tipo FROM gastos"
+    ).fetchall()
     conn.close()
 
-    por_quem = {
-        "Danilo": por_quem_rows.get("Danilo", 0),
-        "Rafaella": por_quem_rows.get("Rafaella", 0),
-    }
-
-    por_tipo = {
-        "Fixo": por_tipo_rows.get("Fixo", 0),
-        "Viagem": por_tipo_rows.get("Viagem", 0),
-    }
+    total = 0.0
+    por_categoria = {}
+    por_quem = {"Danilo": 0.0, "Rafaella": 0.0}
+    por_tipo = {"Fixo": 0.0, "Viagem": 0.0}
+    for r in rows:
+        v = converter(r["valor"], r["moeda"], exibir, rate)
+        total += v
+        por_categoria[r["categoria"]] = por_categoria.get(r["categoria"], 0.0) + v
+        if r["quem"] in por_quem:
+            por_quem[r["quem"]] += v
+        t = r["tipo"] if r["tipo"] in por_tipo else "Viagem"
+        por_tipo[t] += v
 
     return jsonify(
         {
-            "total_geral": total_geral,
+            "total_geral": total,
             "por_categoria": por_categoria,
             "por_quem": por_quem,
             "por_tipo": por_tipo,
+            "cotacao": rate,
+            "exibir": exibir,
         }
     )
+
+
+@app.route("/api/config", methods=["GET"])
+@login_required
+def get_config():
+    conn = get_db()
+    rate = get_cotacao(conn)
+    conn.close()
+    return jsonify({"cotacao": rate})
+
+
+@app.route("/api/config", methods=["POST"])
+@login_required
+def set_config():
+    data = request.get_json(silent=True) or {}
+    try:
+        cot = float(data.get("cotacao"))
+    except (TypeError, ValueError):
+        return jsonify({"erro": "Cotacao invalida"}), 400
+    if cot <= 0:
+        return jsonify({"erro": "Cotacao invalida"}), 400
+    conn = get_db()
+    conn.execute(
+        f"INSERT INTO config (chave, valor) VALUES ('cotacao', {PH}) "
+        "ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor",
+        (str(cot),),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "cotacao": cot})
 
 
 # Garante que o banco existe mesmo sob gunicorn (sem rodar __main__).
