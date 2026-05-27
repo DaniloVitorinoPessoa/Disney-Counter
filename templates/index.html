@@ -210,6 +210,32 @@
       backdrop-filter: blur(3px); box-shadow: 0 10px 30px rgba(0,0,0,0.3);
     }
     .panel h2 { font-family: 'Cinzel', serif; font-size: 1.1rem; color: var(--gold); margin-bottom: 16px; }
+
+    /* abas de navegacao */
+    .abas { display: flex; gap: 8px; margin-bottom: 18px; justify-content: center; }
+    .aba {
+      padding: 10px 20px; border-radius: 14px; cursor: pointer; font-weight: 800; font-size: 0.95rem;
+      border: 1px solid var(--border); background: rgba(10,14,46,0.5); color: var(--muted);
+      font-family: 'Nunito', sans-serif; transition: all .15s;
+    }
+    .aba.ativa { background: linear-gradient(135deg, var(--lilac), #9b5de5); color: #fff; border-color: transparent; }
+    .tab-pane { display: none; }
+    .tab-pane.ativo { display: block; }
+
+    /* cofrinho */
+    .cofre-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; }
+    .cofre-meta input {
+      width: 130px; padding: 8px 10px; border-radius: 10px; text-align: right;
+      border: 1px solid var(--border); background: rgba(10,14,46,0.8); color: var(--text); font-weight: 700;
+    }
+    .cofre-meta input:focus { outline: none; border-color: var(--gold); }
+    #salvarMeta, #salvarCot { padding: 8px 12px; border: none; border-radius: 10px; cursor: pointer; background: linear-gradient(135deg, var(--gold), #e0a91f); color: #1a1200; font-weight: 800; }
+    .cofre-barra { height: 24px; border-radius: 12px; background: rgba(10,14,46,0.6); border: 1px solid var(--border); overflow: hidden; }
+    .cofre-fill { height: 100%; width: 0%; border-radius: 12px; background: linear-gradient(90deg, var(--lilac), var(--gold)); transition: width .6s ease; box-shadow: 0 0 16px rgba(245,200,66,.4); }
+    .cofre-nums { display: flex; align-items: baseline; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+    #cofreTotal { font-family: 'Cinzel', serif; font-size: 1.5rem; color: var(--gold); font-weight: 700; }
+    .cofre-pct { font-weight: 800; color: var(--lilac); }
+    .cofre-falta { margin-top: 8px; color: var(--muted); font-weight: 700; font-size: 0.9rem; }
     .acerto-frase { text-align: center; font-family: 'Cinzel', serif; font-size: 1.25rem; color: var(--gold); line-height: 1.4; text-shadow: 0 0 18px rgba(245,200,66,0.3); }
     .acerto-frase .quem { color: var(--lilac); }
     .acerto-frase .grana { color: #7dd3fc; }
@@ -449,6 +475,13 @@
       <div class="cd-frase" id="cdFrase"></div>
     </div>
 
+    <nav class="abas" id="abas">
+      <button type="button" class="aba ativa" data-aba="gastos">💸 Gastos</button>
+      <button type="button" class="aba" data-aba="metas">🎯 Metas</button>
+    </nav>
+
+    <div id="tab-gastos" class="tab-pane ativo">
+
     <div class="hero">
       <div class="lbl">Total Geral</div>
       <div class="val" id="totalGeral">$0.00</div>
@@ -550,6 +583,57 @@
       </div>
       <div class="lista" id="lista"></div>
     </div>
+
+    </div><!-- /tab-gastos -->
+
+    <div id="tab-metas" class="tab-pane">
+      <div class="panel">
+        <h2>🎯 Cofrinho da viagem</h2>
+        <div class="cofre-meta">
+          <span class="mb-lbl">Meta</span>
+          <span class="mb-prefixo">R$</span>
+          <input type="number" id="metaInput" step="100" min="0" placeholder="10000">
+          <button type="button" id="salvarMeta" title="Salvar meta">✓</button>
+        </div>
+        <div class="cofre-prog">
+          <div class="cofre-barra"><div class="cofre-fill" id="cofreFill"></div></div>
+          <div class="cofre-nums">
+            <span id="cofreTotal">R$ 0,00</span>
+            <span id="cofrePct" class="cofre-pct">0%</span>
+            <span id="cofreMeta" class="mb-lbl">de R$ 0,00</span>
+          </div>
+          <div class="cofre-falta" id="cofreFalta"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>💰 Guardar dinheiro</h2>
+        <form class="grid" id="formAporte">
+          <div>
+            <label for="aporteValor">Valor (R$)</label>
+            <input type="number" id="aporteValor" step="0.01" min="0" placeholder="0,00" required>
+          </div>
+          <div>
+            <label for="aporteQuem">Quem guardou</label>
+            <select id="aporteQuem">
+              <option value="{{ membro1 }}">{{ membro1 }}</option>
+              <option value="{{ membro2 }}">{{ membro2 }}</option>
+            </select>
+          </div>
+          <div class="full">
+            <label for="aporteData">Data</label>
+            <input type="date" id="aporteData" required>
+          </div>
+          <button type="submit" class="btn-add">Guardar 🐷</button>
+        </form>
+      </div>
+
+      <div class="panel">
+        <h2>🪙 Aportes</h2>
+        <div class="lista" id="listaAportes"></div>
+      </div>
+    </div><!-- /tab-metas -->
+
   </div>
 
   <div class="mickey" id="mickey" title="...?">🐭</div>
@@ -1244,7 +1328,113 @@
       }, 350);
     });
 
+    // ================= ABAS =================
+    document.querySelectorAll('.aba').forEach(b => {
+      b.addEventListener('click', () => {
+        document.querySelectorAll('.aba').forEach(x => x.classList.remove('ativa'));
+        b.classList.add('ativa');
+        document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('ativo'));
+        document.getElementById('tab-' + b.dataset.aba).classList.add('ativo');
+        if (b.dataset.aba === 'metas') carregarCofrinho();
+      });
+    });
+
+    // ================= COFRINHO =================
+    document.getElementById('aporteData').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('aporteQuem').value = USUARIO_ATUAL;
+    let metaCofre = 0;
+
+    async function carregarCofrinho() {
+      const res = await fetch('/api/cofrinho');
+      if (!res.ok) return;
+      const c = await res.json();
+      metaCofre = c.meta;
+      const mi = document.getElementById('metaInput');
+      if (document.activeElement !== mi && c.meta > 0) mi.value = c.meta;
+
+      const pct = c.meta > 0 ? Math.min(100, (c.total / c.meta) * 100) : 0;
+      document.getElementById('cofreFill').style.width = pct + '%';
+      document.getElementById('cofreTotal').textContent = fmt(c.total, 'BRL');
+      document.getElementById('cofrePct').textContent = Math.round(pct) + '%';
+      document.getElementById('cofreMeta').textContent = 'de ' + fmt(c.meta, 'BRL');
+
+      const falta = c.meta - c.total;
+      const fe = document.getElementById('cofreFalta');
+      const dias = diasRestantes();
+      if (c.meta <= 0) {
+        fe.textContent = 'Defina uma meta pra acompanhar o progresso 🎯';
+      } else if (falta <= 0) {
+        fe.textContent = '🎉 Meta batida! Vocês conseguiram!';
+      } else if (dias > 0) {
+        fe.textContent = `Faltam ${fmt(falta, 'BRL')} — guardando ~${fmt(falta / dias, 'BRL')} por dia até a viagem.`;
+      } else {
+        fe.textContent = `Faltam ${fmt(falta, 'BRL')}.`;
+      }
+
+      const lista = document.getElementById('listaAportes');
+      lista.innerHTML = '';
+      if (!c.aportes.length) {
+        lista.innerHTML = '<div class="vazio">Nenhum valor guardado ainda. Bora começar! 🐷</div>';
+      } else {
+        c.aportes.forEach(ap => {
+          const div = document.createElement('div');
+          div.className = 'item';
+          div.innerHTML = `
+            <div class="emoji">🪙</div>
+            <div class="info">
+              <div class="desc"></div>
+              <div class="meta"><span class="dt"></span><span class="badge"></span></div>
+            </div>
+            <div class="valor">${fmt(ap.valor, 'BRL')}</div>
+            <button class="del" title="Deletar">🗑️</button>`;
+          div.querySelector('.desc').textContent = 'Aporte';
+          div.querySelector('.dt').textContent = fmtData(ap.data);
+          const bd = div.querySelector('.badge');
+          bd.textContent = ap.quem; bd.classList.add(ap.quem === MEMBROS[1] ? 'p2' : 'p1');
+          div.querySelector('.del').addEventListener('click', async () => {
+            if (!confirm('Remover este aporte?')) return;
+            await fetch('/api/aportes/' + ap.id, { method: 'DELETE' });
+            carregarCofrinho();
+          });
+          lista.appendChild(div);
+        });
+      }
+    }
+
+    async function salvarMeta() {
+      const v = parseFloat(document.getElementById('metaInput').value);
+      if (isNaN(v) || v < 0) { alert('Informe uma meta válida.'); return; }
+      const res = await fetch('/api/cofrinho', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ meta: v })
+      });
+      if (res.ok) { toast('🎯 Meta salva!'); carregarCofrinho(); }
+      else { alert('Erro ao salvar meta.'); }
+    }
+    document.getElementById('salvarMeta').addEventListener('click', salvarMeta);
+    document.getElementById('metaInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') salvarMeta(); });
+
+    document.getElementById('formAporte').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const body = {
+        valor: document.getElementById('aporteValor').value,
+        quem: document.getElementById('aporteQuem').value,
+        data: document.getElementById('aporteData').value,
+      };
+      const res = await fetch('/api/aportes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+      });
+      if (res.ok) {
+        document.getElementById('aporteValor').value = '';
+        poeiraEm(window.innerWidth / 2, 140);
+        carregarCofrinho();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        alert(d.erro || 'Erro ao guardar.');
+      }
+    });
+
     atualizar();
+    carregarCofrinho();
   </script>
 </body>
 </html>

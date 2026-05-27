@@ -94,6 +94,18 @@ def init_db():
     conn.execute(
         "CREATE TABLE IF NOT EXISTS config (chave TEXT PRIMARY KEY, valor TEXT)"
     )
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS aportes (
+            id {id_col},
+            valor {valor_col} NOT NULL,
+            quem TEXT NOT NULL,
+            data TEXT NOT NULL,
+            grupo TEXT NOT NULL DEFAULT 'casal1',
+            criado_em TEXT NOT NULL
+        )
+        """
+    )
     # Migracoes para bancos criados antes destes campos.
     if USE_PG:
         conn.execute("ALTER TABLE gastos ADD COLUMN IF NOT EXISTS tipo TEXT NOT NULL DEFAULT 'Viagem'")
@@ -403,6 +415,99 @@ def acerto():
             "exibir": exibir,
         }
     )
+
+
+@app.route("/api/cofrinho", methods=["GET"])
+@login_required
+def get_cofrinho():
+    grupo = session["grupo"]
+    conn = get_db()
+    row = conn.execute(
+        f"SELECT valor FROM config WHERE chave = {PH}", (f"meta_grana:{grupo}",)
+    ).fetchone()
+    try:
+        meta = float(row["valor"]) if row else 0.0
+    except (TypeError, ValueError):
+        meta = 0.0
+    aportes = conn.execute(
+        f"SELECT * FROM aportes WHERE grupo = {PH} ORDER BY data DESC, id DESC",
+        (grupo,),
+    ).fetchall()
+    conn.close()
+    total = sum(a["valor"] for a in aportes)
+    return jsonify(
+        {"meta": meta, "total": total, "aportes": [dict(a) for a in aportes]}
+    )
+
+
+@app.route("/api/cofrinho", methods=["POST"])
+@login_required
+def set_meta():
+    data = request.get_json(silent=True) or {}
+    try:
+        meta = float(data.get("meta"))
+    except (TypeError, ValueError):
+        return jsonify({"erro": "Meta invalida"}), 400
+    if meta < 0:
+        return jsonify({"erro": "Meta invalida"}), 400
+    conn = get_db()
+    conn.execute(
+        f"INSERT INTO config (chave, valor) VALUES ({PH}, {PH}) "
+        "ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor",
+        (f"meta_grana:{session['grupo']}", str(meta)),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "meta": meta})
+
+
+@app.route("/api/aportes", methods=["POST"])
+@login_required
+def add_aporte():
+    data = request.get_json(silent=True) or {}
+    grupo = session["grupo"]
+    membros = GRUPOS[grupo]["membros"]
+    quem = (data.get("quem") or "").strip()
+    if quem not in membros:
+        quem = session["usuario"]
+    data_aporte = (data.get("data") or "").strip()
+    try:
+        valor = float(data.get("valor"))
+    except (TypeError, ValueError):
+        return jsonify({"erro": "Valor invalido"}), 400
+    if valor <= 0 or not data_aporte:
+        return jsonify({"erro": "Dados invalidos"}), 400
+
+    criado_em = datetime.now().isoformat()
+    conn = get_db()
+    sql = (
+        "INSERT INTO aportes (valor, quem, data, grupo, criado_em) "
+        f"VALUES ({PH}, {PH}, {PH}, {PH}, {PH})"
+    )
+    params = (valor, quem, data_aporte, grupo, criado_em)
+    if USE_PG:
+        novo_id = conn.execute(sql + " RETURNING id", params).fetchone()["id"]
+    else:
+        novo_id = conn.execute(sql, params).lastrowid
+    conn.commit()
+    row = conn.execute(f"SELECT * FROM aportes WHERE id = {PH}", (novo_id,)).fetchone()
+    conn.close()
+    return jsonify(dict(row)), 201
+
+
+@app.route("/api/aportes/<int:aporte_id>", methods=["DELETE"])
+@login_required
+def del_aporte(aporte_id):
+    grupo = session["grupo"]
+    conn = get_db()
+    cur = conn.execute(
+        f"DELETE FROM aportes WHERE id = {PH} AND grupo = {PH}", (aporte_id, grupo)
+    )
+    conn.commit()
+    conn.close()
+    if cur.rowcount == 0:
+        return jsonify({"erro": "Aporte nao encontrado"}), 404
+    return jsonify({"ok": True})
 
 
 # Garante que o banco existe mesmo sob gunicorn (sem rodar __main__).
