@@ -1096,7 +1096,7 @@
       fixo: () => { aviao(); toast('🧳 As malas já estão na cabeça de vocês!'); },
       viagem: () => { confete(); toast('🏰 Onze dias de pura magia esperando!'); },
       p1: (el) => { const c = centro(el); coracoes('💙', c.x, c.y); toast(`✨ Bora, ${MEMBROS[0]}! O Mickey tá esperando!`); },
-      p2: (el) => { const c = centro(el); coracoes('💜', c.x, c.y); toast(`✨ ${MEMBROS[1]}, partiu Disney!`); }
+      p2: (el) => { const c = centro(el); coracoes('💜', c.x, c.y); toast(`👑 ${MEMBROS[1]}, a princesa da Disney!`); }
     };
     document.querySelectorAll('.stat').forEach(card => {
       const tipo = ['fixo', 'viagem', 'p1', 'p2'].find(t => card.classList.contains(t));
