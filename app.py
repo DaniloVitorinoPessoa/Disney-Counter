@@ -14,6 +14,15 @@ from flask import (
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 
+# Carrega variaveis de um arquivo .env local (se existir). Em producao
+# as variaveis vem do painel do Render. O .env NAO vai pro Git.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "troque-esta-chave-em-producao")
 
@@ -27,12 +36,14 @@ if USE_PG:
     import psycopg
     from psycopg.rows import dict_row
 
-# Usuarios da viagem. As senhas vem de variaveis de ambiente em producao;
-# os valores padrao servem apenas para uso local.
-USUARIOS = {
-    "Danilo": generate_password_hash(os.environ.get("DANILO_SENHA", "disney2026")),
-    "Rafaella": generate_password_hash(os.environ.get("RAFAELLA_SENHA", "disney2026")),
-}
+# Senhas vem SO de variaveis de ambiente (nenhuma senha fica no codigo).
+# Localmente, defina-as no arquivo .env (que NAO vai pro Git).
+# Se a variavel nao existir, aquele usuario simplesmente nao consegue logar.
+USUARIOS = {}
+for _nome, _var in (("Danilo", "DANILO_SENHA"), ("Rafaella", "RAFAELLA_SENHA")):
+    _senha = os.environ.get(_var)
+    if _senha:
+        USUARIOS[_nome] = generate_password_hash(_senha)
 
 
 def get_db():
