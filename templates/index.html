@@ -229,6 +229,7 @@
       color: var(--text); font-family: 'Nunito', sans-serif; font-size: 0.95rem;
     }
     input:focus, select:focus { outline: none; border-color: var(--gold); }
+    input:disabled { opacity: 0.4; cursor: not-allowed; }
     .btn-add {
       grid-column: 1 / -1; margin-top: 6px; padding: 13px; border: none;
       border-radius: 12px; background: linear-gradient(135deg, var(--gold), #e0a91f);
@@ -597,6 +598,7 @@
         tipoAtual = b.dataset.tipo;
         // padrao: pre-viagem (fixo) costuma ser em R$; na viagem, em US$
         document.getElementById('moeda').value = tipoAtual === 'Fixo' ? 'BRL' : 'USD';
+        syncCotacaoEstado();
         preencherCategorias();
       });
     });
@@ -615,6 +617,13 @@
     document.getElementById('data').value = new Date().toISOString().slice(0, 10);
     document.getElementById('quem').value = USUARIO_ATUAL;
     preencherCategorias();
+
+    // a cotacao so faz sentido para gastos em US$; em R$ fica desabilitada
+    function syncCotacaoEstado() {
+      document.getElementById('cotacao').disabled = (document.getElementById('moeda').value === 'BRL');
+    }
+    document.getElementById('moeda').addEventListener('change', syncCotacaoEstado);
+    syncCotacaoEstado();
 
     // estado inicial do seletor de exibicao (US$/R$)
     document.getElementById('verUSD').classList.toggle('active', exibir === 'USD');
