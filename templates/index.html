@@ -324,6 +324,87 @@
     .comprar:hover { opacity: 1; transform: scale(1.25); }
     .vazio { text-align: center; color: var(--muted); padding: 30px; font-style: italic; }
 
+    /* onde comprar (busca por IA) */
+    .lugares-ajuda { color: var(--muted); font-size: 0.85rem; margin-bottom: 14px; line-height: 1.5; }
+    .lugares-busca { display: flex; flex-direction: column; gap: 10px; }
+    textarea {
+      width: 100%; padding: 11px 13px; border-radius: 11px; resize: vertical;
+      border: 1px solid var(--border); background: rgba(10,14,46,0.8);
+      color: var(--text); font-family: 'Nunito', sans-serif; font-size: 0.95rem;
+    }
+    textarea:focus { outline: none; border-color: var(--gold); }
+    .lugares-busca .btn-add { margin-top: 0; }
+    .busca-status { text-align: center; color: var(--muted); font-weight: 700; font-size: 0.9rem; margin: 14px 0 0; }
+    .busca-status:empty { margin: 0; }
+    .busca-status.erro { color: #fca5a5; }
+    .spinner {
+      display: inline-block; width: 16px; height: 16px; margin-right: 8px; vertical-align: -3px;
+      border: 2px solid rgba(245,200,66,0.3); border-top-color: var(--gold);
+      border-radius: 50%; animation: girar 0.8s linear infinite;
+    }
+    @keyframes girar { to { transform: rotate(360deg); } }
+    #resultadosBusca:not(:empty) { margin-top: 16px; }
+    .res-card {
+      display: flex; gap: 12px; align-items: flex-start;
+      background: rgba(10,14,46,0.6); border: 1px solid var(--border);
+      border-radius: 14px; padding: 14px 16px; animation: enter 0.4s ease;
+    }
+    .res-card input[type=checkbox] {
+      width: 18px; height: 18px; margin-top: 3px; flex-shrink: 0;
+      accent-color: var(--gold); cursor: pointer;
+    }
+    .res-card .info { flex: 1; min-width: 0; }
+    .res-card .nome { font-weight: 800; font-size: 1rem; color: var(--text); }
+    .res-card .descricao { font-size: 0.84rem; color: var(--muted); margin-top: 4px; line-height: 1.45; }
+    .res-card a.link { display: inline-block; margin-top: 6px; font-size: 0.8rem; color: #7dd3fc; text-decoration: none; word-break: break-all; }
+    .res-card a.link:hover { text-decoration: underline; }
+    .btn-salvar-sel {
+      margin-top: 4px; padding: 12px; border: none; width: 100%;
+      border-radius: 12px; background: linear-gradient(135deg, var(--lilac), #9b5de5);
+      color: #fff; font-family: 'Cinzel', serif; font-weight: 700; font-size: 0.95rem;
+      letter-spacing: 1px; cursor: pointer; transition: transform .15s;
+    }
+    .btn-salvar-sel:hover { transform: translateY(-2px); }
+    .aviso-ia { font-size: 0.72rem; color: var(--muted); font-style: italic; text-align: center; margin-top: 4px; line-height: 1.4; }
+    .fontes-busca:not(:empty) { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+    .fontes-busca .titulo-f { font-size: 0.72rem; color: var(--lilac); font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .fontes-busca a { display: block; font-size: 0.76rem; color: var(--muted); text-decoration: none; margin-bottom: 3px; word-break: break-all; }
+    .fontes-busca a:hover { color: #7dd3fc; }
+
+    /* chat da aba "Onde comprar" */
+    .chat-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .chat-head h2 { margin-bottom: 16px; }
+    .btn-encerrar {
+      margin-bottom: 16px; padding: 6px 12px; border-radius: 20px; cursor: pointer;
+      border: 1px solid var(--border); background: rgba(10,14,46,0.5); color: var(--muted);
+      font-family: 'Nunito', sans-serif; font-weight: 700; font-size: 0.78rem; transition: all .15s;
+    }
+    .btn-encerrar:hover { color: #fca5a5; border-color: #fca5a5; }
+    .chat { display: flex; flex-direction: column; gap: 12px; max-height: 440px; overflow-y: auto; padding: 2px; }
+    .chat:not(:empty) { margin-bottom: 12px; }
+    .bolha {
+      max-width: 85%; padding: 10px 14px; border-radius: 16px; font-size: 0.9rem;
+      line-height: 1.45; animation: enter 0.3s ease; word-wrap: break-word;
+    }
+    .bolha.user { align-self: flex-end; background: linear-gradient(135deg, var(--lilac), #9b5de5); color: #fff; border-bottom-right-radius: 4px; }
+    .bolha.bot { align-self: flex-start; background: rgba(10,14,46,0.6); border: 1px solid var(--border); color: var(--text); border-bottom-left-radius: 4px; width: 85%; }
+    .bolha.digitando { color: var(--muted); font-style: italic; }
+    .bolha .cards { margin-top: 10px; display: flex; flex-direction: column; gap: 10px; }
+    .bolha .aviso-ia { text-align: left; margin-top: 8px; }
+    .dots span { display: inline-block; animation: pisca 1.2s infinite; }
+    .dots span:nth-child(2) { animation-delay: .2s; }
+    .dots span:nth-child(3) { animation-delay: .4s; }
+    @keyframes pisca { 0%, 60%, 100% { opacity: .25; } 30% { opacity: 1; } }
+    .chat-input { display: flex; gap: 8px; align-items: flex-end; }
+    .chat-input textarea { flex: 1; resize: none; }
+    .btn-chat-send {
+      flex-shrink: 0; width: 46px; height: 46px; border: none; border-radius: 12px; cursor: pointer;
+      background: linear-gradient(135deg, var(--gold), #e0a91f); color: #1a1200; font-size: 1.1rem; font-weight: 800;
+      transition: transform .15s;
+    }
+    .btn-chat-send:hover { transform: translateY(-2px); }
+    .btn-chat-send:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
     /* hidden mickey easter egg */
     .mickey {
       position: fixed; bottom: 10px; right: 12px; z-index: 5;
@@ -490,6 +571,7 @@
       <button type="button" class="aba ativa" data-aba="gastos">💸 Gastos</button>
       <button type="button" class="aba" data-aba="metas">🎯 Metas</button>
       <button type="button" class="aba" data-aba="desejos">🛍️ Desejos</button>
+      <button type="button" class="aba" data-aba="lugares">🛒 Onde comprar</button>
     </nav>
 
     <div id="tab-gastos" class="tab-pane ativo">
@@ -668,6 +750,31 @@
         <div class="lista" id="listaDesejos"></div>
       </div>
     </div><!-- /tab-desejos -->
+
+    <div id="tab-lugares" class="tab-pane">
+      <div class="panel">
+        <div class="chat-head">
+          <h2>💬 Onde comprar</h2>
+          <button type="button" class="btn-encerrar" id="btnEncerrar" title="Encerrar conversa" hidden>Encerrar ✕</button>
+        </div>
+        <p class="lugares-ajuda" id="chatAjuda">Converse como num chat: peça lugares
+          (ex.: <em>"relógio da Bulova confiável e barato nos EUA"</em>), refine à vontade
+          (<em>"mais barato"</em>, <em>"só no Brasil"</em>...) e marque os que gostar pra
+          salvar. As respostas vêm de buscas reais na web, com as fontes. Encerre quando quiser.</p>
+        <div class="chat" id="chat"></div>
+        <div id="chatFontes" class="fontes-busca"></div>
+        <form class="chat-input" id="formChat">
+          <textarea id="chatMsg" rows="1" maxlength="500"
+            placeholder="Digite sua mensagem..."></textarea>
+          <button type="submit" class="btn-chat-send" id="btnChatSend" title="Enviar">➤</button>
+        </form>
+      </div>
+
+      <div class="panel">
+        <h2>📍 Lugares salvos</h2>
+        <div class="lista" id="listaLugares"></div>
+      </div>
+    </div><!-- /tab-lugares -->
 
   </div>
 
@@ -1381,6 +1488,7 @@
       document.getElementById('tab-' + nome).classList.add('ativo');
       if (nome === 'metas') carregarCofrinho();
       if (nome === 'desejos') carregarDesejos();
+      if (nome === 'lugares') carregarLugares();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
     document.querySelectorAll('.aba').forEach(b => b.addEventListener('click', () => irParaAba(b.dataset.aba)));
@@ -1554,6 +1662,213 @@
       irParaAba('gastos');
       document.getElementById('descricao').scrollIntoView({ behavior: 'smooth', block: 'center' });
       toast('🛒 Confirme os dados e clique Adicionar — sai da lista de desejos ✨');
+    }
+
+    // ================= ONDE COMPRAR (chat) =================
+    let conversa = [];                                     // [{papel, texto}]
+    let chatOcupado = false;
+
+    function ehLinkSeguro(u) { return /^https?:\/\//i.test(u || ''); }
+
+    const chatEl = () => document.getElementById('chat');
+    function scrollChat() { const c = chatEl(); c.scrollTop = c.scrollHeight; }
+
+    function addBolhaUser(texto) {
+      const b = document.createElement('div');
+      b.className = 'bolha user';
+      b.textContent = texto;
+      chatEl().appendChild(b);
+      scrollChat();
+    }
+
+    function addDigitando() {
+      const b = document.createElement('div');
+      b.className = 'bolha bot digitando';
+      b.id = 'digitando';
+      b.innerHTML = 'buscando na web <span class="dots"><span>.</span><span>.</span><span>.</span></span>';
+      chatEl().appendChild(b);
+      scrollChat();
+    }
+    function removeDigitando() { const d = document.getElementById('digitando'); if (d) d.remove(); }
+
+    function addBolhaBot(data) {
+      const b = document.createElement('div');
+      b.className = 'bolha bot';
+      const txt = document.createElement('div');
+      txt.textContent = data.resposta || '';
+      b.appendChild(txt);
+
+      const lugares = data.lugares || [];
+      if (lugares.length) {
+        const cards = document.createElement('div');
+        cards.className = 'cards';
+        lugares.forEach(l => {
+          const card = document.createElement('div');
+          card.className = 'res-card';
+          card.innerHTML = `
+            <input type="checkbox" checked>
+            <div class="info"><div class="nome"></div><div class="descricao"></div></div>`;
+          card.querySelector('.nome').textContent = l.nome;
+          card.querySelector('.descricao').textContent = l.descricao || '';
+          if (ehLinkSeguro(l.url)) {
+            const a = document.createElement('a');
+            a.className = 'link';
+            a.href = l.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+            a.textContent = '🔗 ' + l.url;
+            card.querySelector('.info').appendChild(a);
+          }
+          card._lugar = l;
+          cards.appendChild(card);
+        });
+        b.appendChild(cards);
+
+        const salvar = document.createElement('button');
+        salvar.type = 'button';
+        salvar.className = 'btn-salvar-sel';
+        salvar.textContent = '➕ Adicionar selecionados';
+        salvar.addEventListener('click', () => salvarDe(cards, salvar));
+        b.appendChild(salvar);
+
+        const aviso = document.createElement('div');
+        aviso.className = 'aviso-ia';
+        aviso.textContent = '⚠️ Sugestões de IA a partir de buscas na web. Confira o link antes de comprar — preços e disponibilidade mudam.';
+        b.appendChild(aviso);
+      }
+      chatEl().appendChild(b);
+      scrollChat();
+    }
+
+    function renderFontes(fontes) {
+      const el = document.getElementById('chatFontes');
+      el.innerHTML = '';
+      if (!fontes || !fontes.length) return;
+      const t = document.createElement('div');
+      t.className = 'titulo-f';
+      t.textContent = 'Fontes da última busca';
+      el.appendChild(t);
+      fontes.forEach(f => {
+        if (!ehLinkSeguro(f.url)) return;
+        const a = document.createElement('a');
+        a.href = f.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+        a.textContent = f.titulo || f.url;
+        el.appendChild(a);
+      });
+    }
+
+    async function salvarDe(cardsEl, botao) {
+      const escolhidos = [...cardsEl.querySelectorAll('.res-card')]
+        .filter(c => c.querySelector('input[type=checkbox]').checked);
+      if (!escolhidos.length) { toast('Selecione pelo menos um lugar 🛒'); return; }
+      const ultima = [...conversa].reverse().find(m => m.papel === 'user');
+      for (const c of escolhidos) {
+        const l = c._lugar;
+        await fetch('/api/lugares', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nome: l.nome, descricao: l.descricao, url: l.url, busca: ultima ? ultima.texto : '' })
+        });
+      }
+      botao.textContent = '✓ Salvos!';
+      botao.disabled = true;
+      toast('🛒 Salvo nos seus lugares!');
+      carregarLugares();
+    }
+
+    async function enviarChat(texto) {
+      if (chatOcupado) return;
+      chatOcupado = true;
+      document.getElementById('btnChatSend').disabled = true;
+      document.getElementById('chatAjuda').hidden = true;
+      document.getElementById('btnEncerrar').hidden = false;
+
+      conversa.push({ papel: 'user', texto });
+      addBolhaUser(texto);
+      addDigitando();
+      try {
+        const res = await fetch('/api/buscar-lugares', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mensagens: conversa })
+        });
+        const data = await res.json().catch(() => ({}));
+        removeDigitando();
+        if (!res.ok) {
+          addBolhaBot({ resposta: '⚠️ ' + (data.erro || 'Não consegui buscar agora.'), lugares: [] });
+        } else {
+          conversa.push({ papel: 'assistant', texto: data.resposta || '' });
+          addBolhaBot(data);
+          renderFontes(data.fontes);
+        }
+      } catch (err) {
+        removeDigitando();
+        addBolhaBot({ resposta: '⚠️ Erro de conexão. Tente de novo.', lugares: [] });
+      } finally {
+        chatOcupado = false;
+        document.getElementById('btnChatSend').disabled = false;
+      }
+    }
+
+    document.getElementById('formChat').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const inp = document.getElementById('chatMsg');
+      const texto = inp.value.trim();
+      if (!texto) return;
+      inp.value = '';
+      enviarChat(texto);
+    });
+
+    // Enter envia; Shift+Enter quebra linha.
+    document.getElementById('chatMsg').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        document.getElementById('formChat').requestSubmit();
+      }
+    });
+
+    document.getElementById('btnEncerrar').addEventListener('click', () => {
+      conversa = [];
+      chatEl().innerHTML = '';
+      document.getElementById('chatFontes').innerHTML = '';
+      document.getElementById('chatMsg').value = '';
+      document.getElementById('btnEncerrar').hidden = true;
+      document.getElementById('chatAjuda').hidden = false;
+      toast('💬 Conversa encerrada. Pode começar outra quando quiser!');
+    });
+
+    async function carregarLugares() {
+      const res = await fetch('/api/lugares');
+      if (!res.ok) return;
+      const lugares = await res.json();
+      const lista = document.getElementById('listaLugares');
+      lista.innerHTML = '';
+      if (!lugares.length) {
+        lista.innerHTML = '<div class="vazio">Nenhum lugar salvo ainda. Faça uma busca acima 🔎</div>';
+        return;
+      }
+      lugares.forEach(l => {
+        const div = document.createElement('div');
+        div.className = 'res-card';
+        div.innerHTML = `
+          <div class="emoji" style="font-size:1.5rem">📍</div>
+          <div class="info">
+            <div class="nome"></div>
+            <div class="descricao"></div>
+          </div>
+          <button class="del" title="Remover">🗑️</button>`;
+        div.querySelector('.nome').textContent = l.nome;
+        div.querySelector('.descricao').textContent = l.descricao || '';
+        if (ehLinkSeguro(l.url)) {
+          const a = document.createElement('a');
+          a.className = 'link';
+          a.href = l.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+          a.textContent = '🔗 ' + l.url;
+          div.querySelector('.info').appendChild(a);
+        }
+        div.querySelector('.del').addEventListener('click', async () => {
+          if (!confirm(`Remover "${l.nome}" dos lugares salvos?`)) return;
+          await fetch('/api/lugares/' + l.id, { method: 'DELETE' });
+          carregarLugares();
+        });
+        lista.appendChild(div);
+      });
     }
 
     document.getElementById('formAporte').addEventListener('submit', async (e) => {

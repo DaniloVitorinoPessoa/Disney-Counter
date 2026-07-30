@@ -1,5 +1,9 @@
 import os
+import json
+import time
 import sqlite3
+import urllib.request
+import urllib.error
 from datetime import datetime
 from functools import wraps
 
@@ -31,6 +35,19 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 USE_PG = bool(DATABASE_URL)
 DB_PATH = os.environ.get("DISNEY_DB_PATH", "disney_gastos.db")
 PH = "%s" if USE_PG else "?"  # placeholder de parametro do driver
+
+# Busca da aba "Onde comprar" (100% gratis, sem cartao):
+#  1) TAVILY faz a busca real na web e devolve resultados com link (free tier
+#     sem cartao - crie a chave em tavily.com). E o que garante confiabilidade.
+#  2) GEMINI (so texto, gratis) cura e explica os resultados em portugues.
+#     Opcional: sem ele, a aba mostra os resultados crus do Tavily.
+# As chaves vem SO de variaveis de ambiente (nada no codigo).
+TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+# Modelo de TEXTO do Gemini (nao usa mais o grounding pago; quem busca e o
+# Tavily). O "lite" e gratis, leve e menos sujeito a picos de demanda (503).
+# O alias "-latest" evita 404 quando uma versao e aposentada.
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-lite-latest")
 
 if USE_PG:
     import psycopg
@@ -119,6 +136,20 @@ def init_db():
         )
         """
     )
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS lugares (
+            id {id_col},
+            nome TEXT NOT NULL,
+            descricao TEXT NOT NULL DEFAULT '',
+            url TEXT NOT NULL DEFAULT '',
+            busca TEXT NOT NULL DEFAULT '',
+            quem TEXT NOT NULL DEFAULT '',
+            grupo TEXT NOT NULL DEFAULT 'casal1',
+            criado_em TEXT NOT NULL
+        )
+        """
+    )
     # Migracoes para bancos criados antes destes campos.
     if USE_PG:
         conn.execute("ALTER TABLE gastos ADD COLUMN IF NOT EXISTS tipo TEXT NOT NULL DEFAULT 'Viagem'")
@@ -161,6 +192,185 @@ def converter(valor, moeda, exibir, cotacao):
     if exibir == "BRL":
         return valor * cot           # gasto em USD -> BRL (custo real do dia)
     return valor / cot               # gasto em BRL -> USD
+
+
+def _tavily_buscar(pergunta):
+    """Busca real na web via Tavily (free tier, sem cartao). Devolve uma lista
+    de resultados [{titulo, url, conteudo}] - a base confiavel da resposta."""
+    if not TAVILY_API_KEY:
+        raise RuntimeError("Busca nao configurada.")
+    body = json.dumps(
+        {
+            "query": pergunta,
+            "search_depth": "basic",
+            "max_results": 8,
+            "topic": "general",
+        }
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        "https://api.tavily.com/search",
+        data=body,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + TAVILY_API_KEY,
+        },
+    )
+    with urllib.request.urlopen(req, timeout=45) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    resultados = []
+    for r in data.get("results", []) or []:
+        url = (r.get("url") or "").strip()
+        if not url.lower().startswith("http"):
+            continue
+        resultados.append(
+            {
+                "titulo": (r.get("title") or "").strip(),
+                "url": url,
+                "conteudo": (r.get("content") or "").strip(),
+            }
+        )
+    return resultados
+
+
+def _gemini_texto(prompt, timeout=45, tentativas=3):
+    """Chamada simples de texto ao Gemini (gratis, sem grounding). Devolve o
+    texto gerado, ou '' se a IA nao estiver configurada / falhar. Faz retry com
+    backoff em erros transitorios (503 sobrecarga, 429 rate, 500)."""
+    if not GEMINI_API_KEY:
+        return ""
+    body = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode("utf-8")
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{GEMINI_MODEL}:generateContent"
+    )
+    for i in range(tentativas):
+        req = urllib.request.Request(
+            url,
+            data=body,
+            method="POST",
+            headers={"Content-Type": "application/json", "x-goog-api-key": GEMINI_API_KEY},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            cand = (data.get("candidates") or [{}])[0]
+            partes = cand.get("content", {}).get("parts", []) or []
+            return "".join(p.get("text", "") for p in partes)
+        except urllib.error.HTTPError as e:
+            if e.code in (429, 500, 503) and i < tentativas - 1:
+                time.sleep(1.5 * (i + 1))  # 1.5s, 3s...
+                continue
+            return ""
+        except Exception:
+            return ""
+    return ""
+
+
+def _parse_json_obj(texto):
+    """Extrai um objeto JSON do texto da IA (tolera cercas ``` e lixo em volta)."""
+    if not texto:
+        return {}
+    t = texto.strip()
+    if t.startswith("```"):
+        t = t.strip("`")
+        if t[:4].lower() == "json":
+            t = t[4:]
+    ini, fim = t.find("{"), t.rfind("}")
+    if ini != -1 and fim != -1 and fim > ini:
+        t = t[ini : fim + 1]
+    try:
+        obj = json.loads(t)
+        return obj if isinstance(obj, dict) else {}
+    except (ValueError, TypeError):
+        return {}
+
+
+def _limpar_lugares(lista, resultados):
+    """Normaliza a lista de lugares da IA. Se houver resultados do Tavily, so
+    aceita URLs que vieram deles (anti-alucinacao); senao aceita http."""
+    canon = {(r["url"] or "").rstrip("/").lower(): r["url"] for r in resultados}
+    limpos = []
+    for l in lista or []:
+        if not isinstance(l, dict):
+            continue
+        nome = (l.get("nome") or "").strip()
+        if not nome:
+            continue
+        url = (l.get("url") or "").strip()
+        if resultados:
+            real = canon.get(url.rstrip("/").lower())
+            if not real:
+                continue  # url inventada -> descarta
+            url = real
+        elif not url.lower().startswith("http"):
+            url = ""
+        limpos.append(
+            {
+                "nome": nome[:200],
+                "descricao": (l.get("descricao") or "").strip()[:500],
+                "url": url[:500],
+            }
+        )
+    return limpos[:8]
+
+
+def _historico_texto(mensagens):
+    """Formata a conversa (lista de {papel, texto}) como texto para o prompt."""
+    linhas = []
+    for m in mensagens:
+        quem = "Usuario" if m.get("papel") == "user" else "Assistente"
+        linhas.append(f"{quem}: {(m.get('texto') or '').strip()}")
+    return "\n".join(linhas)
+
+
+def _query_de_busca(mensagens):
+    """Deriva uma consulta de busca autossuficiente a partir da conversa (para
+    lidar com follow-ups tipo 'e mais barato?'). Na 1a mensagem, busca direto."""
+    ultima = next(
+        (m.get("texto", "").strip() for m in reversed(mensagens) if m.get("papel") == "user"),
+        "",
+    )
+    if not GEMINI_API_KEY or len(mensagens) <= 1:
+        return ultima
+    prompt = (
+        "Dada a conversa abaixo, escreva UMA consulta de busca na web, curta e "
+        "autossuficiente, no idioma do usuario, que capture o que ele procura "
+        "AGORA. Responda somente com a consulta, sem aspas.\n\n"
+        + _historico_texto(mensagens)
+    )
+    q = _gemini_texto(prompt).strip()
+    q = q.splitlines()[0].strip().strip('"') if q else ""
+    return (q or ultima)[:300]
+
+
+def _gemini_conversa(mensagens, resultados):
+    """Resposta conversacional do Gemini com base na conversa + resultados reais
+    do Tavily. Devolve (resposta_texto, lugares) ou ('', None) se a IA falhar."""
+    if not GEMINI_API_KEY or not resultados:
+        return "", None
+    contexto = "\n\n".join(
+        f"[{i}] {r['titulo']}\nURL: {r['url']}\n{r['conteudo'][:500]}"
+        for i, r in enumerate(resultados)
+    )
+    instrucao = (
+        "Voce e um assistente de compras simpatico e direto, conversando em "
+        "portugues. Com base na conversa e nos resultados de busca REAIS abaixo, "
+        "responda ao usuario e sugira lugares/lojas confiaveis e com bom preco. "
+        "Responda SOMENTE com um JSON valido, sem markdown, no formato: "
+        '{"resposta":"uma ou duas frases conversando","lugares":[{"nome":"...",'
+        '"descricao":"por que e confiavel e a faixa de preco","url":"uma das URLs '
+        'dos resultados"}]}. Use SOMENTE URLs que aparecem nos resultados. Sugira '
+        "de 2 a 6 lugares. Se o usuario apenas agradecer ou conversar sem pedir "
+        'compra, deixe "lugares" vazio e apenas responda gentilmente.\n\n'
+        f"Conversa:\n{_historico_texto(mensagens)}\n\nResultados:\n{contexto}"
+    )
+    obj = _parse_json_obj(_gemini_texto(instrucao))
+    if not obj:
+        return "", None
+    resposta = (obj.get("resposta") or "").strip()[:600]
+    lugares = _limpar_lugares(obj.get("lugares"), resultados)
+    return resposta, lugares
 
 
 def login_required(f):
@@ -603,6 +813,142 @@ def del_desejo(desejo_id):
     conn.close()
     if cur.rowcount == 0:
         return jsonify({"erro": "Desejo nao encontrado"}), 404
+    return jsonify({"ok": True})
+
+
+@app.route("/api/buscar-lugares", methods=["POST"])
+@login_required
+def buscar_lugares():
+    if not TAVILY_API_KEY:
+        return (
+            jsonify(
+                {"erro": "Busca nao configurada. Defina TAVILY_API_KEY no ambiente."}
+            ),
+            503,
+        )
+    data = request.get_json(silent=True) or {}
+
+    # Aceita a conversa inteira em "mensagens" (chat) ou, por compatibilidade,
+    # uma unica "pergunta".
+    mensagens = data.get("mensagens")
+    if not isinstance(mensagens, list):
+        pergunta = (data.get("pergunta") or "").strip()
+        mensagens = [{"papel": "user", "texto": pergunta}] if pergunta else []
+    mensagens = [
+        {
+            "papel": "user" if m.get("papel") == "user" else "assistant",
+            "texto": (m.get("texto") or "").strip()[:1000],
+        }
+        for m in mensagens
+        if isinstance(m, dict) and (m.get("texto") or "").strip()
+    ][-12:]
+    if not mensagens:
+        return jsonify({"erro": "Escreva o que voce procura."}), 400
+
+    # 1) Consulta autossuficiente (lida com follow-ups) e busca real (Tavily).
+    query = _query_de_busca(mensagens)
+    try:
+        resultados = _tavily_buscar(query)
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            msg = "A TAVILY_API_KEY parece inválida. Confira a chave."
+        elif e.code == 429:
+            msg = "Cota de buscas do mês esgotada (Tavily). Tente no próximo ciclo."
+        else:
+            msg = f"A busca falhou (HTTP {e.code}). Tente de novo."
+        return jsonify({"erro": msg}), 502
+    except urllib.error.URLError:
+        return jsonify({"erro": "Nao consegui fazer a busca agora. Tente de novo."}), 502
+    except Exception:
+        return jsonify({"erro": "Erro inesperado na busca."}), 500
+
+    fontes = [{"url": r["url"], "titulo": r["titulo"]} for r in resultados]
+
+    # 2) Gemini responde conversando + sugere lugares. Se falhar, cai nos
+    #    resultados crus do Tavily - o chat nunca fica sem resposta.
+    resposta, lugares = _gemini_conversa(mensagens, resultados)
+    if lugares is None:
+        lugares = [
+            {
+                "nome": r["titulo"] or r["url"],
+                "descricao": r["conteudo"][:300],
+                "url": r["url"],
+            }
+            for r in resultados[:6]
+        ]
+    if not resposta:
+        resposta = (
+            "Achei estas opções pra você 👇"
+            if lugares
+            else "Não encontrei lugares confiáveis pra isso. Quer tentar descrever de outro jeito?"
+        )
+
+    return jsonify({"resposta": resposta, "lugares": lugares, "fontes": fontes})
+
+
+@app.route("/api/lugares", methods=["GET"])
+@login_required
+def listar_lugares():
+    grupo = session["grupo"]
+    conn = get_db()
+    rows = conn.execute(
+        f"SELECT * FROM lugares WHERE grupo = {PH} ORDER BY id DESC", (grupo,)
+    ).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/lugares", methods=["POST"])
+@login_required
+def add_lugar():
+    data = request.get_json(silent=True) or {}
+    grupo = session["grupo"]
+    nome = (data.get("nome") or "").strip()
+    if not nome:
+        return jsonify({"erro": "Nome obrigatorio"}), 400
+    descricao = (data.get("descricao") or "").strip()
+    url = (data.get("url") or "").strip()
+    if not url.lower().startswith("http"):
+        url = ""
+    busca = (data.get("busca") or "").strip()
+
+    criado_em = datetime.now().isoformat()
+    conn = get_db()
+    sql = (
+        "INSERT INTO lugares (nome, descricao, url, busca, quem, grupo, criado_em) "
+        f"VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})"
+    )
+    params = (
+        nome[:200],
+        descricao[:500],
+        url[:500],
+        busca[:500],
+        session["usuario"],
+        grupo,
+        criado_em,
+    )
+    if USE_PG:
+        novo_id = conn.execute(sql + " RETURNING id", params).fetchone()["id"]
+    else:
+        novo_id = conn.execute(sql, params).lastrowid
+    conn.commit()
+    row = conn.execute(f"SELECT * FROM lugares WHERE id = {PH}", (novo_id,)).fetchone()
+    conn.close()
+    return jsonify(dict(row)), 201
+
+
+@app.route("/api/lugares/<int:lugar_id>", methods=["DELETE"])
+@login_required
+def del_lugar(lugar_id):
+    grupo = session["grupo"]
+    conn = get_db()
+    cur = conn.execute(
+        f"DELETE FROM lugares WHERE id = {PH} AND grupo = {PH}", (lugar_id, grupo)
+    )
+    conn.commit()
+    conn.close()
+    if cur.rowcount == 0:
+        return jsonify({"erro": "Lugar nao encontrado"}), 404
     return jsonify({"ok": True})
 
 

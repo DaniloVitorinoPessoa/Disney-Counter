@@ -39,6 +39,28 @@ Web app em **Python + Flask**, com **SQLite** localmente e **PostgreSQL**
 - Botão **"Comprei"** pré-preenche o formulário de gasto e, ao confirmar,
   remove o item da lista (vira gasto de verdade).
 
+### 🛒 Onde comprar (chat de compras)
+- Um **chat interativo**: você conversa em linguagem natural (ex.: *"relógio da
+  Bulova confiável e barato nos EUA"*), pode **refinar** com follow-ups
+  (*"mais barato"*, *"só no Brasil"*...) mantendo o contexto, e **encerra a
+  conversa quando quiser** (botão *Encerrar*).
+- Cada resposta traz lojas/sites reais **pesquisados na web de verdade**, com
+  **link para conferir** e as **fontes consultadas**.
+- Marque um ou mais lugares de qualquer resposta e clique **"Adicionar"** para
+  salvá-los numa lista de **lugares para frequentar** (com isolamento por
+  casal, igual aos desejos).
+- **Arquitetura 100% gratuita, sem cartão:**
+  1. **Tavily** faz a busca real na web (free tier, sem cartão) — é o que
+     garante links reais e confiáveis. Requer `TAVILY_API_KEY`.
+  2. **Gemini** (opcional, grátis, só texto) organiza e explica os resultados
+     em português. Sem `GEMINI_API_KEY`, a aba mostra os resultados crus do
+     Tavily.
+  > A busca web *paga* do próprio Gemini (grounding) foi evitada de propósito:
+  > ela exige faturamento ativo. Esta combinação entrega o mesmo resultado
+  > confiável sem custo.
+- ⚠️ IA pode errar: os resultados vêm com um aviso e os links das fontes para
+  você conferir antes de comprar.
+
 ### ⏳ Contagem regressiva
 - Conta dias/horas/min/seg até **25/12/2026** (chegada), com frases mágicas.
   Trata os períodos durante e depois da viagem.
@@ -82,6 +104,9 @@ disney-gastos/
 | `PEDRO_SENHA`, `GIOVANNA_SENHA` | senhas do casal 2 |
 | `DATABASE_URL` | string do Postgres (Neon). Sem ela, usa SQLite local |
 | `SECRET_KEY` | chave de assinatura das sessões de login |
+| `TAVILY_API_KEY` | busca web da aba "Onde comprar". Grátis (sem cartão) em [app.tavily.com](https://app.tavily.com). Sem ela, a aba fica desativada |
+| `GEMINI_API_KEY` | IA do Google que organiza os resultados. Grátis em [aistudio.google.com/apikey](https://aistudio.google.com/apikey). Opcional |
+| `GEMINI_MODEL` | modelo de texto do Gemini (padrão `gemini-flash-latest`). Opcional |
 
 > As senhas e o `DATABASE_URL` **nunca** ficam no código — só nas variáveis
 > de ambiente (no `.env` local, ignorado pelo Git, ou no painel do Render).

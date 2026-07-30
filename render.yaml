@@ -17,3 +17,10 @@ services:
         sync: false
       - key: RAFAELLA_SENHA
         sync: false
+      # Aba "Onde comprar" (busca web gratis, sem cartao):
+      # Tavily faz a busca real (obrigatoria p/ a aba). Gratis: app.tavily.com
+      - key: TAVILY_API_KEY
+        sync: false
+      # Gemini so organiza os resultados (opcional). Gratis: aistudio.google.com
+      - key: GEMINI_API_KEY
+        sync: false
