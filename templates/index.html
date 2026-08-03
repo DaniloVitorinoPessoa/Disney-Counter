@@ -664,6 +664,10 @@
           <label for="categoria">Categoria</label>
           <select id="categoria"></select>
         </div>
+        <div class="full" id="catOutroWrap" hidden>
+          <label for="categoriaOutro">Qual? (categoria personalizada)</label>
+          <input type="text" id="categoriaOutro" maxlength="40" placeholder="Ex: Seguro viagem, Chip de celular...">
+        </div>
         <button type="submit" class="btn-add">Adicionar ✨</button>
       </form>
     </div>
@@ -788,7 +792,7 @@
     const GRUPO_NOME = MEMBROS[0] + " & " + MEMBROS[1];
 
     const CATEGORIAS = {
-      Fixo: ["✈️ Passagem", "🛂 Visto", "📄 Passaporte", "🏦 Agência", "💉 Vacina", "📦 Outros"],
+      Fixo: ["✈️ Passagem", "🛂 Visto", "📄 Passaporte", "🏦 Agência", "💉 Vacina", "🎟️ Ingresso", "🚗 Carro / Transporte", "🏨 Hotel", "📦 Outros"],
       Viagem: ["🎢 Parque", "🎟️ Ingresso", "🍔 Alimentação", "🛒 Mercado", "🏨 Hotel", "🚗 Carro / Transporte", "🏠 Casa", "🛍️ Comprinhas", "👕 Souvenir", "💊 Farmácia", "📦 Outros"]
     };
 
@@ -837,7 +841,16 @@
         opt.value = c; opt.textContent = c;
         sel.appendChild(opt);
       });
+      catOutroToggle();
     }
+
+    // mostra o campo de texto livre so quando a categoria for "Outros"
+    function catOutroToggle() {
+      const ehOutro = document.getElementById('categoria').value === '📦 Outros';
+      document.getElementById('catOutroWrap').hidden = !ehOutro;
+      if (!ehOutro) document.getElementById('categoriaOutro').value = '';
+    }
+    document.getElementById('categoria').addEventListener('change', catOutroToggle);
 
     // tipo toggle
     document.querySelectorAll('.toggle button').forEach(b => {
@@ -1000,12 +1013,17 @@
 
     document.getElementById('form').addEventListener('submit', async (e) => {
       e.preventDefault();
+      let categoria = document.getElementById('categoria').value;
+      if (categoria === '📦 Outros') {
+        const outro = document.getElementById('categoriaOutro').value.trim();
+        if (outro) categoria = '📦 ' + outro;
+      }
       const body = {
         descricao: document.getElementById('descricao').value.trim(),
         valor: document.getElementById('valor').value,
         quem: document.getElementById('quem').value,
         data: document.getElementById('data').value,
-        categoria: document.getElementById('categoria').value,
+        categoria: categoria,
         tipo: tipoAtual,
         moeda: document.getElementById('moeda').value,
         cotacao: document.getElementById('cotacao').value,
@@ -1019,6 +1037,7 @@
       if (res.ok) {
         document.getElementById('descricao').value = '';
         document.getElementById('valor').value = '';
+        document.getElementById('categoriaOutro').value = '';
         poeiraEm(window.innerWidth / 2, 120); // sparkle ao adicionar
         // se este gasto veio de um desejo, tira o desejo da lista
         if (desejoPendente) {
