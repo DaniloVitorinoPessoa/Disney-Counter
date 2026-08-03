@@ -150,6 +150,20 @@ def init_db():
         )
         """
     )
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS essenciais (
+            id {id_col},
+            nome TEXT NOT NULL,
+            valor {valor_col} NOT NULL DEFAULT 0,
+            moeda TEXT NOT NULL DEFAULT 'USD',
+            obs TEXT NOT NULL DEFAULT '',
+            comprado INTEGER NOT NULL DEFAULT 0,
+            grupo TEXT NOT NULL DEFAULT 'casal1',
+            criado_em TEXT NOT NULL
+        )
+        """
+    )
     # Migracoes para bancos criados antes destes campos.
     if USE_PG:
         conn.execute("ALTER TABLE gastos ADD COLUMN IF NOT EXISTS tipo TEXT NOT NULL DEFAULT 'Viagem'")
@@ -949,6 +963,138 @@ def del_lugar(lugar_id):
     conn.close()
     if cur.rowcount == 0:
         return jsonify({"erro": "Lugar nao encontrado"}), 404
+    return jsonify({"ok": True})
+
+
+# ----- Essenciais (checklist do que falta comprar) -----
+# Itens que ja aparecem preenchidos na 1a vez de cada casal.
+ESSENCIAIS_PADRAO = [
+    "✈️ Passagem",
+    "🏨 Hospedagem",
+    "🚗 Carro",
+    "🎢 Ingressos Disney",
+    "🎟️ Ingressos Universal",
+]
+
+
+@app.route("/api/essenciais", methods=["GET"])
+@login_required
+def listar_essenciais():
+    grupo = session["grupo"]
+    conn = get_db()
+    # Semeia os itens padrao uma unica vez por casal (marca no config).
+    ja = conn.execute(
+        f"SELECT valor FROM config WHERE chave = {PH}", (f"essenciais_seed:{grupo}",)
+    ).fetchone()
+    if not ja:
+        criado_em = datetime.now().isoformat()
+        for nome in ESSENCIAIS_PADRAO:
+            conn.execute(
+                "INSERT INTO essenciais (nome, valor, moeda, obs, comprado, grupo, criado_em) "
+                f"VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})",
+                (nome, 0, "USD", "", 0, grupo, criado_em),
+            )
+        conn.execute(
+            f"INSERT INTO config (chave, valor) VALUES ({PH}, {PH}) "
+            "ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor",
+            (f"essenciais_seed:{grupo}", "1"),
+        )
+        conn.commit()
+    rows = conn.execute(
+        f"SELECT * FROM essenciais WHERE grupo = {PH} ORDER BY comprado ASC, id ASC",
+        (grupo,),
+    ).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/essenciais", methods=["POST"])
+@login_required
+def add_essencial():
+    data = request.get_json(silent=True) or {}
+    grupo = session["grupo"]
+    nome = (data.get("nome") or "").strip()
+    if not nome:
+        return jsonify({"erro": "Nome obrigatorio"}), 400
+    moeda = (data.get("moeda") or "USD").strip().upper()
+    if moeda not in ("USD", "BRL"):
+        moeda = "USD"
+    obs = (data.get("obs") or "").strip()[:300]
+    try:
+        valor = float(data.get("valor"))
+    except (TypeError, ValueError):
+        valor = 0.0
+    if valor < 0:
+        valor = 0.0
+
+    criado_em = datetime.now().isoformat()
+    conn = get_db()
+    sql = (
+        "INSERT INTO essenciais (nome, valor, moeda, obs, comprado, grupo, criado_em) "
+        f"VALUES ({PH}, {PH}, {PH}, {PH}, {PH}, {PH}, {PH})"
+    )
+    params = (nome[:120], valor, moeda, obs, 0, grupo, criado_em)
+    if USE_PG:
+        novo_id = conn.execute(sql + " RETURNING id", params).fetchone()["id"]
+    else:
+        novo_id = conn.execute(sql, params).lastrowid
+    conn.commit()
+    row = conn.execute(f"SELECT * FROM essenciais WHERE id = {PH}", (novo_id,)).fetchone()
+    conn.close()
+    return jsonify(dict(row)), 201
+
+
+@app.route("/api/essenciais/<int:item_id>", methods=["PUT"])
+@login_required
+def atualizar_essencial(item_id):
+    data = request.get_json(silent=True) or {}
+    grupo = session["grupo"]
+    conn = get_db()
+    atual = conn.execute(
+        f"SELECT * FROM essenciais WHERE id = {PH} AND grupo = {PH}", (item_id, grupo)
+    ).fetchone()
+    if not atual:
+        conn.close()
+        return jsonify({"erro": "Item nao encontrado"}), 404
+    atual = dict(atual)
+
+    nome = str(data.get("nome", atual["nome"]) or atual["nome"]).strip()[:120] or atual["nome"]
+    obs = str(data.get("obs", atual["obs"]) or "").strip()[:300]
+    moeda = str(data.get("moeda") or atual["moeda"] or "USD").strip().upper()
+    if moeda not in ("USD", "BRL"):
+        moeda = "USD"
+    try:
+        valor = float(data["valor"]) if data.get("valor") not in (None, "") else float(atual["valor"] or 0)
+    except (TypeError, ValueError, KeyError):
+        valor = float(atual["valor"] or 0)
+    if valor < 0:
+        valor = 0.0
+    comprado = data.get("comprado")
+    comprado = int(bool(comprado)) if comprado is not None else int(atual["comprado"] or 0)
+
+    conn.execute(
+        f"UPDATE essenciais SET nome = {PH}, valor = {PH}, moeda = {PH}, obs = {PH}, "
+        f"comprado = {PH} WHERE id = {PH} AND grupo = {PH}",
+        (nome, valor, moeda, obs, comprado, item_id, grupo),
+    )
+    conn.commit()
+    row = conn.execute(f"SELECT * FROM essenciais WHERE id = {PH}", (item_id,)).fetchone()
+    conn.close()
+    return jsonify(dict(row))
+
+
+@app.route("/api/essenciais/<int:item_id>", methods=["DELETE"])
+@login_required
+def del_essencial(item_id):
+    grupo = session["grupo"]
+    conn = get_db()
+    cur = conn.execute(
+        f"DELETE FROM essenciais WHERE id = {PH} AND grupo = {PH}", (item_id, grupo)
+    )
+    conn.commit()
+    conn.close()
+    if cur.rowcount == 0:
+        return jsonify({"erro": "Item nao encontrado"}), 404
     return jsonify({"ok": True})
 
 

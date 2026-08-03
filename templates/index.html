@@ -324,6 +324,22 @@
     .comprar:hover { opacity: 1; transform: scale(1.25); }
     .vazio { text-align: center; color: var(--muted); padding: 30px; font-style: italic; }
 
+    /* essenciais (checklist) */
+    .ess-prog { margin-bottom: 18px; }
+    .ess-prog-bar { height: 20px; border-radius: 12px; background: rgba(10,14,46,0.6); border: 1px solid var(--border); overflow: hidden; }
+    .ess-prog-fill { height: 100%; width: 0%; border-radius: 12px; background: linear-gradient(90deg, var(--lilac), var(--gold)); transition: width .5s ease; }
+    .ess-prog-txt { margin-top: 8px; font-weight: 800; color: var(--lilac); font-size: 0.9rem; }
+    .ess-check {
+      flex-shrink: 0; width: 26px; height: 26px; border-radius: 8px; cursor: pointer;
+      border: 2px solid var(--border); background: rgba(10,14,46,0.6); color: var(--gold);
+      font-size: 1rem; font-weight: 900; line-height: 1; display: flex; align-items: center; justify-content: center;
+      transition: all .15s;
+    }
+    .ess-check:hover { border-color: var(--gold); }
+    .item.done .ess-check { background: var(--gold); color: #1a1200; border-color: transparent; }
+    .item.done .desc { text-decoration: line-through; color: var(--muted); }
+    .ess-obs { font-size: 0.78rem; color: var(--muted); }
+
     /* onde comprar (busca por IA) */
     .lugares-ajuda { color: var(--muted); font-size: 0.85rem; margin-bottom: 14px; line-height: 1.5; }
     .lugares-busca { display: flex; flex-direction: column; gap: 10px; }
@@ -571,6 +587,7 @@
       <button type="button" class="aba ativa" data-aba="gastos">💸 Gastos</button>
       <button type="button" class="aba" data-aba="metas">🎯 Metas</button>
       <button type="button" class="aba" data-aba="desejos">🛍️ Desejos</button>
+      <button type="button" class="aba" data-aba="essenciais">✅ Essenciais</button>
       <button type="button" class="aba" data-aba="lugares">🛒 Onde comprar</button>
     </nav>
 
@@ -754,6 +771,46 @@
         <div class="lista" id="listaDesejos"></div>
       </div>
     </div><!-- /tab-desejos -->
+
+    <div id="tab-essenciais" class="tab-pane">
+      <div class="panel">
+        <h2>✅ Essenciais da viagem</h2>
+        <p class="lugares-ajuda">O que já está resolvido e o que ainda falta comprar
+          (passagem, hospedagem, carro, ingressos...). Toque no quadradinho pra marcar
+          como comprado.</p>
+        <div class="ess-prog">
+          <div class="ess-prog-bar"><div class="ess-prog-fill" id="essFill"></div></div>
+          <div class="ess-prog-txt" id="essTxt">—</div>
+        </div>
+        <div class="lista" id="listaEssenciais"></div>
+      </div>
+
+      <div class="panel">
+        <h2>➕ Adicionar essencial</h2>
+        <form class="grid" id="formEssencial">
+          <div class="full">
+            <label for="essNome">O que é?</label>
+            <input type="text" id="essNome" maxlength="120" placeholder="Ex: Seguro viagem, Chip internacional..." required>
+          </div>
+          <div>
+            <label for="essValor">Preço estimado</label>
+            <input type="number" id="essValor" step="0.01" min="0" placeholder="0,00">
+          </div>
+          <div>
+            <label for="essMoeda">Moeda</label>
+            <select id="essMoeda">
+              <option value="USD">US$ Dólar</option>
+              <option value="BRL">R$ Real</option>
+            </select>
+          </div>
+          <div class="full">
+            <label for="essObs">Observação (opcional)</label>
+            <input type="text" id="essObs" maxlength="300" placeholder="Ex: Disney 28/12–01/01, 3 parques">
+          </div>
+          <button type="submit" class="btn-add">Adicionar ✨</button>
+        </form>
+      </div>
+    </div><!-- /tab-essenciais -->
 
     <div id="tab-lugares" class="tab-pane">
       <div class="panel">
@@ -1507,6 +1564,7 @@
       document.getElementById('tab-' + nome).classList.add('ativo');
       if (nome === 'metas') carregarCofrinho();
       if (nome === 'desejos') carregarDesejos();
+      if (nome === 'essenciais') carregarEssenciais();
       if (nome === 'lugares') carregarLugares();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -1681,6 +1739,94 @@
       irParaAba('gastos');
       document.getElementById('descricao').scrollIntoView({ behavior: 'smooth', block: 'center' });
       toast('🛒 Confirme os dados e clique Adicionar — sai da lista de desejos ✨');
+    }
+
+    // ================= ESSENCIAIS (checklist) =================
+    async function carregarEssenciais() {
+      const res = await fetch('/api/essenciais');
+      if (!res.ok) return;
+      const itens = await res.json();
+      const lista = document.getElementById('listaEssenciais');
+      lista.innerHTML = '';
+      const total = itens.length;
+      const feitos = itens.filter(i => i.comprado).length;
+      const pct = total ? Math.round(feitos / total * 100) : 0;
+      document.getElementById('essFill').style.width = pct + '%';
+      document.getElementById('essTxt').textContent = total
+        ? `${feitos} de ${total} resolvidos (${pct}%)`
+        : 'Nenhum item ainda — adicione abaixo 👇';
+      if (!total) { lista.innerHTML = '<div class="vazio">Nenhum essencial na lista.</div>'; return; }
+      itens.forEach(it => {
+        const div = document.createElement('div');
+        div.className = 'item ess-item' + (it.comprado ? ' done' : '');
+        div.innerHTML = `
+          <button class="ess-check" title="Marcar como comprado">${it.comprado ? '✓' : ''}</button>
+          <div class="info">
+            <div class="desc"></div>
+            <div class="meta"><span class="ess-obs"></span></div>
+          </div>
+          <div class="valor">${it.valor > 0 ? fmt(it.valor, it.moeda) : '—'}</div>
+          <button class="comprar" title="Virar gasto">🛒</button>
+          <button class="del" title="Remover">🗑️</button>`;
+        div.querySelector('.desc').textContent = it.nome;
+        div.querySelector('.ess-obs').textContent = it.obs || '';
+        div.querySelector('.ess-check').addEventListener('click', async () => {
+          await fetch('/api/essenciais/' + it.id, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ comprado: !it.comprado })
+          });
+          if (!it.comprado) poeiraEm(window.innerWidth / 2, 140);
+          carregarEssenciais();
+        });
+        div.querySelector('.comprar').addEventListener('click', () => essencialViraGasto(it));
+        div.querySelector('.del').addEventListener('click', async () => {
+          if (!confirm(`Remover "${it.nome}" da checklist?`)) return;
+          await fetch('/api/essenciais/' + it.id, { method: 'DELETE' });
+          carregarEssenciais();
+        });
+        lista.appendChild(div);
+      });
+    }
+
+    document.getElementById('formEssencial').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const body = {
+        nome: document.getElementById('essNome').value.trim(),
+        valor: document.getElementById('essValor').value || 0,
+        moeda: document.getElementById('essMoeda').value,
+        obs: document.getElementById('essObs').value.trim(),
+      };
+      if (!body.nome) return;
+      const res = await fetch('/api/essenciais', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+      });
+      if (res.ok) {
+        document.getElementById('essNome').value = '';
+        document.getElementById('essValor').value = '';
+        document.getElementById('essObs').value = '';
+        carregarEssenciais();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        alert(d.erro || 'Erro ao adicionar.');
+      }
+    });
+
+    // pre-preenche o formulario de gasto a partir de um essencial (nao marca sozinho)
+    function essencialViraGasto(it) {
+      const semEmoji = (it.nome || '').replace(/^[^\p{L}\p{N}]+/u, '').trim() || it.nome;
+      tipoAtual = 'Fixo';
+      document.querySelectorAll('.toggle button').forEach(x => x.classList.toggle('active', x.dataset.tipo === 'Fixo'));
+      preencherCategorias();
+      document.getElementById('descricao').value = semEmoji;
+      document.getElementById('valor').value = it.valor > 0 ? it.valor : '';
+      document.getElementById('moeda').value = it.moeda || 'USD';
+      document.getElementById('categoria').value = '📦 Outros';
+      catOutroToggle();
+      document.getElementById('categoriaOutro').value = semEmoji.slice(0, 40);
+      syncCotacaoEstado();
+      irParaAba('gastos');
+      document.getElementById('descricao').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      toast('🛒 Confirme os dados e clique Adicionar. Depois é só marcar o ✅ na checklist!');
     }
 
     // ================= ONDE COMPRAR (chat) =================
